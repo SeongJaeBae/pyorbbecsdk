@@ -8,6 +8,7 @@ import signal
 import sys
 import socket
 import struct
+import uuid
 from pyorbbecsdk import *
 from utils import frame_to_bgr_image
 from ultralytics import YOLO
@@ -284,7 +285,7 @@ def main():
     thread = threading.Thread(target=save_worker, daemon=True)
     thread.start()
 
-    index = 0
+    index = str(uuid.uuid4())
     frame_count = 0
     last_time = time.time()
     last_capture_time = 0
@@ -329,7 +330,6 @@ def main():
                 save_queue.put_nowait(
                     (color_frame, depth_frame, frames, has_color_sensor, index)
                 )
-                index += 1
             except queue.Full:
                 pass
 

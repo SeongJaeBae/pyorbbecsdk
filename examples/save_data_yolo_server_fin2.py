@@ -1,8 +1,3 @@
-# *******************************************************************************
-# Integrated: Color + Depth + PointCloud + YOLO OBB save
-# (Threaded, pair guaranteed)
-# *******************************************************************************
-
 import os
 import cv2
 import numpy as np
@@ -11,6 +6,8 @@ import threading
 import queue
 import signal
 import sys
+import socket
+import struct
 import uuid
 from pyorbbecsdk import *
 from utils import frame_to_bgr_image
@@ -19,13 +16,8 @@ from ultralytics import YOLO
 # ===============================
 # YOLO OBB 모델 로드
 # ===============================
-#MODEL_PATH = "/home/myung/workspace/paper_best_all.pt"
-#
-#MODEL_PATH = "/home/myung/workspace/paper_test/yolo11_models/yolo11n.pt"
 MODEL_PATH = "/home/myung/workspace/obb_best_260109.pt"
-
 model = YOLO(MODEL_PATH)
- 
 
 # ===============================
 # Queue + Worker
@@ -40,16 +32,124 @@ pipeline = None
 TARGET_FPS = 10
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
+SERVER_IP = '192.168.1.154'
+SERVER_PORT = 9000
+CAMERA_TYPE = "orbbec"
 
 
+# ===============================
+# Persistent TCP Sender
+# ===============================
+class PersistentSender:
+    def __init__(self, ip, port):
+        self.ip = ip
+        self.port = port
+        self.sock = None
+        self.lock = threading.Lock()
+
+    def _connect(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.settimeout(20)
+        self.sock.connect((self.ip, self.port))
+        print(f"Connected to {self.ip}:{self.port}")
+
+    def send(self, buffer_bytes, filename, file_type, capture_id):
+        with self.lock:
+            try:
+                if self.sock is None:
+                    self._connect()
+
+                header = f"{CAMERA_TYPE}|{file_type}|{capture_id}|{filename}"
+                header_bytes = header.encode()
+
+                self.sock.sendall(struct.pack('!I', len(header_bytes)))
+                self.sock.sendall(header_bytes)
+                self.sock.sendall(struct.pack('!Q', len(buffer_bytes)))
+                self.sock.sendall(buffer_bytes)
+
+                response = self.sock.recv(4096)
+                print(f"sent: {filename} ({len(buffer_bytes)} bytes)")
+
+            except Exception as e:
+                print(f"SEND ERROR, reconnecting: {e}")
+                try:
+                    self.sock.close()
+                except:
+                    pass
+                self.sock = None
+
+    def close(self):
+        if self.sock:
+            try:
+                self.sock.close()
+            except:
+                pass
+
+
+sender = PersistentSender(SERVER_IP, SERVER_PORT)
+
+
+# ===============================
+# Point Cloud → PLY bytes
+# ===============================
+def save_point_cloud_to_memory(pc_frame):
+    if pc_frame is None:
+        return None
+
+    data = pc_frame.get_data()
+    if data is None:
+        return None
+
+    points_np = np.frombuffer(data, dtype=np.float32)
+    points_np = points_np.reshape(-1, 6)
+    vertex_count = points_np.shape[0]
+
+    header = f"""ply
+format binary_little_endian 1.0
+element vertex {vertex_count}
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+"""
+    header_bytes = header.encode('utf-8')
+
+    xyz = points_np[:, :3]
+    rgb = points_np[:, 3:6].astype(np.uint8)
+
+    structured = np.empty(
+        vertex_count,
+        dtype=[
+            ('x', np.float32),
+            ('y', np.float32),
+            ('z', np.float32),
+            ('r', np.uint8),
+            ('g', np.uint8),
+            ('b', np.uint8),
+        ]
+    )
+    structured['x'] = xyz[:, 0]
+    structured['y'] = xyz[:, 1]
+    structured['z'] = xyz[:, 2]
+    structured['r'] = rgb[:, 0]
+    structured['g'] = rgb[:, 1]
+    structured['b'] = rgb[:, 2]
+
+    return header_bytes + structured.tobytes()
+
+
+# ===============================
+# Save Worker Thread
+# ===============================
 def save_worker():
     global save_count, save_last_time
 
-    # PointCloud filter (1회 생성)
     point_cloud_filter = PointCloudFilter()
     point_cloud_filter.set_create_point_format(OBFormat.RGB_POINT)
 
-    # 폴더 미리 생성
     os.makedirs("color_images", exist_ok=True)
     os.makedirs("pred_images", exist_ok=True)
     os.makedirs("labels", exist_ok=True)
@@ -70,61 +170,54 @@ def save_worker():
             img = frame_to_bgr_image(color_frame)
 
             if img is not None:
-                # 원본 이미지 저장
-                cv2.imwrite(
-                    f"color_images/color_{index}_{timestamp}.jpg",
-                    img
-                )
-                print("save image")
+                filename = f"color_{index}_{timestamp}.jpg"
 
-                # ------------------------------
-                # YOLO OBB inference
-                # ------------------------------
+                success, encoded_img = cv2.imencode(".jpg", img)
+                if success:
+                    sender.send(
+                        encoded_img.tobytes(), filename, "color", index
+                    )
+
                 results = model.predict(
-                    img,
-                    conf=0.3,
-                    imgsz=640,
-                    device=0,
-                    verbose=False
+                    img, conf=0.3, imgsz=640, device=0, verbose=False
                 )
-
                 r = results[0]
 
-                # ------------------------------
-                # 시각화 이미지 저장
-                # ------------------------------
                 vis = r.plot()
-                cv2.imwrite(
-                    f"pred_images/pred_{index}_{timestamp}.jpg",
-                    vis
-                )
-                print("save pred")
+                
+                success, encoded_vis = cv2.imencode(".jpg", vis)
+                if success:
+                    sender.send(
+                        encoded_vis.tobytes(),
+                        f"pred_{index}_{timestamp}.jpg",
+                        "prediction",
+                        index
+                    )
 
-                # ------------------------------
-                # OBB label 저장
-                # format:
-                # class x1 y1 x2 y2 x3 y3 x4 y4
-                # ------------------------------
                 if r.obb is not None:
-                    with open(f"labels/label_{index}.txt", "w") as f:
-                        for cls, pts in zip(r.obb.cls, r.obb.xyxyxyxy):
-                            pts = pts.cpu().numpy().reshape(-1)
-                            line = f"{int(cls)} " + " ".join(map(str, pts))
-                            f.write(line + "\n")
-                            print("save txt")
+                    label_str = ""
+                    for cls, pts in zip(r.obb.cls, r.obb.xyxyxyxy):
+                        pts = pts.cpu().numpy().reshape(-1)
+                        line = f"{int(cls)} " + " ".join(map(str, pts))
+                        label_str += line + "\n"
+
+                    sender.send(
+                        label_str.encode(),
+                        f"label_{index}.txt",
+                        "label",
+                        index
+                    )
 
         # ==================================================
         # 2. POINT CLOUD
         # ==================================================
-
-        if index % 10 == 0:
+        if save_count % 10 == 0:
             pc_frame = point_cloud_filter.process(frames)
             if pc_frame:
-                save_point_cloud_to_ply(
-                    f"point_clouds/cloud_{index}.ply",
-                    pc_frame
+                ply_bytes = save_point_cloud_to_memory(pc_frame)
+                sender.send(
+                    ply_bytes, f"cloud_{index}.ply", "pointcloud", index
                 )
-                print(f"point_clouds/cloud_{index}.ply")
 
         # ==================================================
         # SAVE FPS
@@ -138,31 +231,32 @@ def save_worker():
 
         save_queue.task_done()
 
+
 def cleanup(signum=None, frame=None):
     global running, pipeline
     print("\n[SAFE EXIT] Releasing camera...")
     running = False
+    sender.close()
     try:
         pipeline.stop()
     except:
         pass
     return
 
+
 # ===============================
 # main
 # ===============================
 def main():
     global running, pipeline
-    cv2.setNumThreads(4)  # Jetson OpenCV 최적화
+    cv2.setNumThreads(4)
 
     pipeline = Pipeline()
     config = Config()
-
     has_color_sensor = False
 
     signal.signal(signal.SIGINT, cleanup)
     signal.signal(signal.SIGTERM, cleanup)
-
 
     # ---------- COLOR ----------
     try:
@@ -188,25 +282,21 @@ def main():
     # ===============================
     # Start save thread
     # ===============================
-    thread = threading.Thread(
-        target=save_worker,
-        daemon=True
-    )
+    thread = threading.Thread(target=save_worker, daemon=True)
     thread.start()
 
-    #index = str(uuid.uuid4())
-    index = 0
+    
     frame_count = 0
     last_time = time.time()
+    last_capture_time = 0
 
     print("Start capture (Threaded saving + YOLO)")
-    last_capture_time = 0
 
     while True:
         try:
             now = time.time()
             if now - last_capture_time < FRAME_INTERVAL:
-                time.sleep(0.001)   # CPU 100% 방지
+                time.sleep(0.001)
                 continue
 
             last_capture_time = now
@@ -234,16 +324,15 @@ def main():
                 last_time = now
 
             # ===============================
-            # Queue push (빠름)
+            # Queue push
             # ===============================
+            index = str(uuid.uuid4())
             try:
                 save_queue.put_nowait(
                     (color_frame, depth_frame, frames, has_color_sensor, index)
                 )
-                index += 1
-             
             except queue.Full:
-                pass  # 저장 밀리면 drop
+                pass
 
         except KeyboardInterrupt:
             break
@@ -254,7 +343,7 @@ def main():
     running = False
     save_queue.put(None)
     thread.join()
-
+    sender.close()
     pipeline.stop()
     print("Finished")
 
