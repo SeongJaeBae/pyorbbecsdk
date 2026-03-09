@@ -14,7 +14,7 @@ from utils import frame_to_bgr_image
 
 
 # =========================
-# Robot Controller (그대로)
+# Robot Controller 
 # =========================
 class RobotController:
     def __init__(self, ip='192.168.27.16', port=502):
@@ -43,15 +43,28 @@ class RobotController:
     def coordinate_to_bytes(self, value):
         return struct.pack('<i', int(value * 1000))
 
-    def create_move_command(self, x, y, z, r, speed=1000):
-        header = bytes([0x30, 0x30, 0x00, 0x00, 0x00, 0x22, 0x01, 0x06, 0x00, 0x03])
+    def create_move_command(self, x, y, z, r, is_linear=False, speed=1000, h_value=50):
+        if is_linear:
+            header = bytes([0x30, 0x30, 0x00, 0x00, 0x00, 0x22, 0x01, 0x06, 0x00, 0x17])
+        else:
+            header = bytes([0x30, 0x30, 0x00, 0x00, 0x00, 0x22, 0x01, 0x06, 0x00, 0x03])
+        
         x_bytes = self.coordinate_to_bytes(x)
         y_bytes = self.coordinate_to_bytes(y)
         z_bytes = self.coordinate_to_bytes(z)
         r_bytes = self.coordinate_to_bytes(r)
+        
         speed_bytes = struct.pack('<i', speed)
-        tail = speed_bytes + bytes([0x00, 0x00, 0x00, 0x00])
-        return header + x_bytes + y_bytes + z_bytes + r_bytes + tail
+        
+        if is_linear:
+            h_bytes = struct.pack('<i', h_value)
+            tail = speed_bytes + h_bytes
+        else:
+            tail = speed_bytes + bytes([0x00, 0x00, 0x00, 0x00])
+        
+        command = header + x_bytes + y_bytes + z_bytes + r_bytes + tail
+        
+        return command
 
     def send_command(self, byte_data, print_log=False):
         if not self.socket:
@@ -72,8 +85,8 @@ class RobotController:
             time.sleep(poll_interval)
         return False
 
-    def move(self, x, y, z, r, speed=1000):
-        cmd = self.create_move_command(x, y, z, r, speed)
+    def move(self, x, y, z, r, is_linear,speed=1000):
+        cmd = self.create_move_command(x, y, z, r,is_linear, speed)
         return self.send_command(cmd)
 
     def home(self):
@@ -127,7 +140,7 @@ class OrbbecCamera:
                 self.config.enable_stream(color_profile)
                 self.has_color = True
 
-            # Depth stream (필요 없지만 동기 안정성 위해 켜둠)
+            # Depth stream 
             depth_profile_list = self.pipeline.get_stream_profile_list(OBSensorType.DEPTH_SENSOR)
             if depth_profile_list is not None:
                 depth_profile: VideoStreamProfile = depth_profile_list.get_default_video_stream_profile()
@@ -177,16 +190,22 @@ class OrbbecCamera:
 
 
 # =========================
-# Main (✅ BEV/JSON 제거, 선형 매핑)
+# Main 
 # =========================
 def main():
-    model_path = "runs_keti_iksan_obb/yolo11m_obb/weights/best.pt"
+    model_path = r"F:\pyorbbecsdk-2-main\pyorbbecsdk-2-main\examples\obb_best_260109.pt"
     MATCH_DIST_THRESH = 80
 
-    # ✅ 선형 매핑 파라미터 (너 환경에 맞게 조정)
-    # target_y = A * cy + B
-    A = -1.0   # (mm/pixel) 같은 스케일. 처음엔 -1.0으로 두고 맞춰도 됨
-    B = 0.0    # 오프셋
+    # Parameters
+    BELT_WIDTH_CM = 25.0
+    PX_PER_CM = 7.6
+
+    CAMERA_HEIGHT_MM = 500.0
+    CAMERA_TO_PICK_DISTANCE_MM = 1200.0
+    BELT_SPEED_MM_S = 20.0
+
+    ROBOT_BASE_Y_MM = 520.0
+    ROBOT_LEAD_TIME_S = 0.0
 
     model = YOLO(model_path)
 
@@ -205,6 +224,7 @@ def main():
     pick_count = 0
     next_object_id = 0
     object_states = {}
+    scheduled_pick = None
     stop_flag = {"stop": False}
 
     def _sigint_handler(sig, frame):
@@ -220,13 +240,20 @@ def main():
 
             h, w = frame.shape[:2]
             mid_x = w / 2
+            mid_y = h / 2
+
+            belt_width_px = BELT_WIDTH_CM * PX_PER_CM
+            half_belt_px = belt_width_px / 2.0
+
+            top_belt_y = int(mid_y - half_belt_px)
+            bottom_belt_y = int(mid_y + half_belt_px)
+            belt_center_y = (top_belt_y + bottom_belt_y) / 2.0
 
             results = model(frame, conf=0.3, iou=0.5, half=True, verbose=False)
             obb = results[0].obb
 
             current_objects = {}
             used_prev_ids = set()
-            target_y = None
 
             if obb is not None and len(obb) > 0:
                 xyxyxyxy = obb.xyxyxyxy.cpu().numpy()
@@ -260,10 +287,27 @@ def main():
                         state = object_states[best_id]
                         current_side = "left" if cx < mid_x else "right"
 
-                        # ✅ 중앙선 crossing 시점에 target_y 산출
-                        if current_side != state["last_side"] and not state["captured"]:
-                            target_y = A * float(cy) + B
-                            print(f"CROSSING: ID={best_id}, cy={cy:.1f}, target_y={target_y:.1f}")
+                        if current_side != state["last_side"] and not state["captured"] and scheduled_pick is None:
+                            dy_px = float(cy) - belt_center_y
+                            dy_cm = dy_px / PX_PER_CM
+                            target_y = -1 * (ROBOT_BASE_Y_MM + dy_cm)
+
+                            time_to_pick = CAMERA_TO_PICK_DISTANCE_MM / BELT_SPEED_MM_S
+                            trigger_delay = max(0.0, time_to_pick - ROBOT_LEAD_TIME_S)
+
+                            scheduled_pick = {
+                                "target_y": target_y,
+                                "pick_time": time_to_pick,
+                                "id": best_id
+                            }
+
+                            print(
+                                f"CROSSING: ID={best_id}, cy={cy:.1f}, "
+                                f"dy_cm={dy_cm:.2f}cm, target_y={target_y:.1f}, "
+                                f"camera_height={CAMERA_HEIGHT_MM:.1f}mm, "
+                                f"pick_after={time_to_pick:.2f}s"
+                            )
+
                             state["captured"] = True
 
                         state["center"] = center
@@ -280,40 +324,35 @@ def main():
             object_states = current_objects
 
             cv2.line(frame, (int(mid_x), 0), (int(mid_x), h), (0, 255, 255), 2)
-            cv2.putText(frame, f"Pick: {pick_count}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+            cv2.line(frame, (0, top_belt_y), (w, top_belt_y), (0, 255, 255), 2)
+            cv2.line(frame, (0, bottom_belt_y), (w, bottom_belt_y), (0, 255, 255), 2)
+
+            cv2.putText(frame, f"Pick: {pick_count}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+
+            if scheduled_pick is not None:
+                remain = scheduled_pick["pick_time"] 
+                cv2.putText(frame, f"Next pick in: {max(0, remain):.2f}s", (10, 70),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+
             cv2.imshow("Delta Robot Vision System", frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == 27:
                 break
 
-            if target_y is not None:
+            if scheduled_pick is not None:
+                target_y = scheduled_pick["target_y"]
+                time_to_speed = int(scheduled_pick["pick_time"] * 100) 
+
                 pick_count += 1
-                print(f"피킹 #{pick_count}")
+                print(f"피킹 #{pick_count}, target_y={target_y:.1f}")
 
                 robot.home()
                 robot.wait_until_complete()
 
-                robot.move(x=0, y=0, z=-597, r=0, speed=2850)
-                robot.wait_until_complete()
-
-                robot.move(x=48, y=target_y, z=-627, r=0, speed=1000)
-                robot.wait_until_complete()
-
                 robot.suction_on()
-                robot.move(x=48, y=target_y, z=-643, r=0, speed=780)
-                robot.wait_until_complete()
-
-                robot.move(x=48, y=target_y, z=-643, r=0, speed=1200)
-                robot.wait_until_complete()
-
-                robot.move(x=48, y=target_y, z=-607, r=0, speed=800)
-                robot.wait_until_complete()
-
-                robot.move(x=48, y=500, z=-690, r=0, speed=1000)
-                robot.wait_until_complete()
-
-                robot.move(x=48, y=500, z=-710, r=0, speed=300)
+                robot.move(x=0, y=target_y, z=-620, r=0.5, is_linear=True, speed=time_to_speed)
                 robot.wait_until_complete()
 
                 robot.suction_off()
@@ -323,6 +362,7 @@ def main():
                 robot.wait_until_complete()
 
                 object_states.clear()
+                scheduled_pick = None
                 print("피킹 완료\n")
 
     finally:

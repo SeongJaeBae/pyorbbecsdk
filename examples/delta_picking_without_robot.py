@@ -92,7 +92,7 @@ class OrbbecCamera:
 # Main (로봇 연결/명령 제거, 결과만 확인)
 # =========================
 def main():
-    model_path = "/home/nvidia/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
+    model_path = "F:\pyorbbecsdk-2-main\pyorbbecsdk-2-main\examples\obb_best_260109.pt"
     MATCH_DIST_THRESH = 80
 
     # ✅ 선형 매핑 파라미터 (탑뷰 가정)
@@ -100,7 +100,7 @@ def main():
     # - A: pixel -> robot_y 스케일 (초기값)
     # - B: 오프셋
     A = -1.0
-    B = 0.0
+    B = 520
 
     model = YOLO(model_path)
 
