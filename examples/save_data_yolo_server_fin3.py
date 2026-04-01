@@ -5,7 +5,6 @@ import time
 import threading
 import queue
 import signal
-import sys
 import socket
 import struct
 import uuid
@@ -16,7 +15,7 @@ from ultralytics import YOLO
 # ===============================
 # YOLO OBB 모델 로드
 # ===============================
-MODEL_PATH = "/home/myung/workspace/obb_best_260109.pt"
+MODEL_PATH = "/home/nvidia/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
 model = YOLO(MODEL_PATH)
 
 # ===============================
@@ -35,6 +34,19 @@ FRAME_INTERVAL = 1.0 / TARGET_FPS
 SERVER_IP = '192.168.1.154'
 SERVER_PORT = 9000
 CAMERA_TYPE = "orbbec"
+
+# ===============================
+# Motion Detection 설정
+# ===============================
+MOTION_ENABLED = True
+MOTION_SENSITIVITY = 3000      # 환경 보면서 조정
+MOTION_THRESHOLD = 25
+BLUR_KERNEL = (21, 21)
+MOTION_COOLDOWN_SEC = 0.2      # 연속 트리거 방지
+SHOW_MOTION_MASK = True
+
+last_motion_time = 0.0
+prev_gray = None
 
 
 # ===============================
@@ -67,7 +79,7 @@ class PersistentSender:
                 self.sock.sendall(struct.pack('!Q', len(buffer_bytes)))
                 self.sock.sendall(buffer_bytes)
 
-                response = self.sock.recv(4096)
+                _ = self.sock.recv(4096)
                 print(f"sent: {filename} ({len(buffer_bytes)} bytes)")
 
             except Exception as e:
@@ -86,8 +98,23 @@ class PersistentSender:
                 pass
 
 
-
 sender = PersistentSender(SERVER_IP, SERVER_PORT)
+
+
+# ===============================
+# Motion Detection 함수
+# ===============================
+def preprocess_for_motion(frame_bgr: np.ndarray) -> np.ndarray:
+    gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    return cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
+
+
+def detect_motion(prev_gray: np.ndarray, curr_gray: np.ndarray):
+    delta = cv2.absdiff(prev_gray, curr_gray)
+    thresh = cv2.threshold(delta, MOTION_THRESHOLD, 255, cv2.THRESH_BINARY)[1]
+    thresh = cv2.dilate(thresh, None, iterations=2)
+    score = cv2.countNonZero(thresh)
+    return score, thresh
 
 
 # ===============================
@@ -151,11 +178,6 @@ def save_worker():
     point_cloud_filter = PointCloudFilter()
     point_cloud_filter.set_create_point_format(OBFormat.RGB_POINT)
 
-    os.makedirs("color_images", exist_ok=True)
-    os.makedirs("pred_images", exist_ok=True)
-    os.makedirs("labels", exist_ok=True)
-    os.makedirs("point_clouds", exist_ok=True)
-
     while running:
         item = save_queue.get()
         if item is None:
@@ -185,7 +207,7 @@ def save_worker():
                 r = results[0]
 
                 vis = r.plot()
-                
+
                 success, encoded_vis = cv2.imencode(".jpg", vis)
                 if success:
                     sender.send(
@@ -216,9 +238,10 @@ def save_worker():
             pc_frame = point_cloud_filter.process(frames)
             if pc_frame:
                 ply_bytes = save_point_cloud_to_memory(pc_frame)
-                sender.send(
-                    ply_bytes, f"cloud_{index}.ply", "pointcloud", index
-                )
+                if ply_bytes is not None:
+                    sender.send(
+                        ply_bytes, f"cloud_{index}.ply", "pointcloud", index
+                    )
 
         # ==================================================
         # SAVE FPS
@@ -249,7 +272,7 @@ def cleanup(signum=None, frame=None):
 # main
 # ===============================
 def main():
-    global running, pipeline
+    global running, pipeline, prev_gray, last_motion_time
     cv2.setNumThreads(4)
 
     pipeline = Pipeline()
@@ -280,18 +303,14 @@ def main():
     pipeline.enable_frame_sync()
     pipeline.start(config)
 
-    # ===============================
-    # Start save thread
-    # ===============================
     thread = threading.Thread(target=save_worker, daemon=True)
     thread.start()
 
-    
     frame_count = 0
     last_time = time.time()
     last_capture_time = 0
 
-    print("Start capture (Threaded saving + YOLO)")
+    print("Start capture (Motion gated + Threaded saving + YOLO)")
 
     while True:
         try:
@@ -313,6 +332,12 @@ def main():
                 continue
             if has_color_sensor and color_frame is None:
                 continue
+            if color_frame is None:
+                continue
+
+            img = frame_to_bgr_image(color_frame)
+            if img is None:
+                continue
 
             # ===============================
             # CAPTURE FPS
@@ -325,8 +350,58 @@ def main():
                 last_time = now
 
             # ===============================
-            # Queue push
+            # Motion Detection
             # ===============================
+            motion_detected = True
+            motion_score = 0
+            thresh = None
+
+            if MOTION_ENABLED:
+                curr_gray = preprocess_for_motion(img)
+
+                if prev_gray is None:
+                    prev_gray = curr_gray
+                    continue
+
+                motion_score, thresh = detect_motion(prev_gray, curr_gray)
+                prev_gray = curr_gray
+
+                if motion_score > MOTION_SENSITIVITY and \
+                   (time.time() - last_motion_time) >= MOTION_COOLDOWN_SEC:
+                    motion_detected = True
+                    last_motion_time = time.time()
+                else:
+                    motion_detected = False
+
+            # ===============================
+            # 화면 표시
+            # ===============================
+            display = img.copy()
+            color = (0, 0, 255) if motion_detected else (0, 255, 0)
+            cv2.putText(
+                display,
+                f"Motion: {motion_score}",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                color,
+                2
+            )
+            cv2.imshow("Orbbec Live", display)
+
+            if SHOW_MOTION_MASK and thresh is not None:
+                cv2.imshow("Motion Mask", cv2.resize(thresh, (640, 360)))
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+
+            # ===============================
+            # motion 있을 때만 저장/추론/전송
+            # ===============================
+            if not motion_detected:
+                continue
+
             index = str(uuid.uuid4())
             try:
                 save_queue.put_nowait(
@@ -338,14 +413,12 @@ def main():
         except KeyboardInterrupt:
             break
 
-    # ===============================
-    # Shutdown
-    # ===============================
     running = False
     save_queue.put(None)
     thread.join()
     sender.close()
     pipeline.stop()
+    cv2.destroyAllWindows()
     print("Finished")
 
 
