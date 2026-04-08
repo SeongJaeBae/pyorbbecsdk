@@ -175,15 +175,16 @@ def main():
     # ---------- SAM3 ----------
     SCORE_THRESH = 0.5
     MIN_MASK_AREA = 500
-    concept = "packaged food on green conveyer"   # 예: ["food", "packaged food", "plastic bag"]
+    #concept = "packaged food on green conveyer"   # 예: ["food", "packaged food", "plastic bag"]
+    concept = "packet"   # 예: ["food", "packaged food", "plastic bag"]
 
     # ---------- motion ----------
-    MOTION_ENABLED = True
+    MOTION_ENABLED = False
     MOTION_SENSITIVITY = 3000
     MOTION_THRESHOLD = 25
     MOTION_BLUR_KERNEL = (21, 21)
     MOTION_COOLDOWN_SEC = 0.2
-    SHOW_MOTION_MASK = True
+    SHOW_MOTION_MASK = False
 
     # ---------- inference skip ----------
     SAM3_FRAME_SKIP = 3   # 3프레임마다 1번 추론

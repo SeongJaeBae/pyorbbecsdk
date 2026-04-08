@@ -157,8 +157,8 @@ def overlay_sam3_results(frame_bgr, masks, boxes, scores, alpha=0.35, score_thre
 # =========================
 def main():
     SCORE_THRESH = 0.1
-    concepts = ["packaged food on green conveyer"]   # 필요하면 ["food", "packaged food", "plastic bag"] 로 변경
-
+    #concepts = ["packaged food on green conveyer"]   # 필요하면 ["food", "packaged food", "plastic bag"] 로 변경
+    concepts = ["packet"]   # 필요하면 ["food", "packaged food", "plastic bag"] 로 변경
     print("=== Loading SAM3 Model ===")
     load_start = time.time()
     sam3_model = build_sam3_image_model()

@@ -11,6 +11,7 @@ import uuid
 from pyorbbecsdk import *
 from utils import frame_to_bgr_image
 from ultralytics import YOLO
+from datetime import datetime
 
 # ===============================
 # YOLO OBB 모델 로드
@@ -193,7 +194,8 @@ def save_worker():
             img = frame_to_bgr_image(color_frame)
 
             if img is not None:
-                filename = f"color_{index}_{timestamp}.jpg"
+                #filename = f"color_{index}_{timestamp}.jpg"
+                filename = f"color_{index}.jpg"
 
                 success, encoded_img = cv2.imencode(".jpg", img)
                 if success:
@@ -212,7 +214,7 @@ def save_worker():
                 if success:
                     sender.send(
                         encoded_vis.tobytes(),
-                        f"pred_{index}_{timestamp}.jpg",
+                        f"pred_{index}.jpg",
                         "prediction",
                         index
                     )
@@ -402,7 +404,10 @@ def main():
             if not motion_detected:
                 continue
 
-            index = str(uuid.uuid4())
+            #index = str(uuid.uuid4())
+            
+            index = datetime.now().isoformat(timespec='milliseconds')
+
             try:
                 save_queue.put_nowait(
                     (color_frame, depth_frame, frames, has_color_sensor, index)
