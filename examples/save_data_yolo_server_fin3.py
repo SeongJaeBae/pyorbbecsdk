@@ -31,7 +31,7 @@ pipeline = None
 TARGET_FPS = 10
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
-SERVER_IP = '192.168.1.154'
+SERVER_IP = '192.168.1.142'
 SERVER_PORT = 9000
 CAMERA_TYPE = "orbbec"
 
@@ -234,14 +234,14 @@ def save_worker():
         # ==================================================
         # 2. POINT CLOUD
         # ==================================================
-        if save_count % 10 == 0:
-            pc_frame = point_cloud_filter.process(frames)
-            if pc_frame:
-                ply_bytes = save_point_cloud_to_memory(pc_frame)
-                if ply_bytes is not None:
-                    sender.send(
-                        ply_bytes, f"cloud_{index}.ply", "pointcloud", index
-                    )
+        # if save_count % 10 == 0:
+        pc_frame = point_cloud_filter.process(frames)
+        if pc_frame:
+            ply_bytes = save_point_cloud_to_memory(pc_frame)
+            if ply_bytes is not None:
+                sender.send(
+                    ply_bytes, f"cloud_{index}.ply", "pointcloud", index
+                )
 
         # ==================================================
         # SAVE FPS
