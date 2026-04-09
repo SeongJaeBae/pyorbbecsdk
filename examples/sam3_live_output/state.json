@@ -1,0 +1,13 @@
+{
+  "status": "running",
+  "model_load_time_ms": 9308.9,
+  "capture_fps": 2,
+  "pred_fps": 0,
+  "set_image_ms": 19.9,
+  "prompt_ms": 529.9,
+  "objects": 0,
+  "concepts": [
+    "packet"
+  ],
+  "updated_at": 1775716230.9566078
+}
