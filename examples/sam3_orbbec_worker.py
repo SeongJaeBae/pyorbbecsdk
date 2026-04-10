@@ -5,7 +5,7 @@ import json
 import traceback
 import numpy as np
 from PIL import Image
-
+import torch
 from pyorbbecsdk import *
 from utils import frame_to_bgr_image
 
@@ -67,7 +67,9 @@ def to_numpy(x):
         x = x.detach()
     if hasattr(x, "cpu"):
         x = x.cpu()
-    if hasattr(x, "numpy"):
+    if torch.is_tensor(x):
+        if x.dtype == torch.bfloat16:
+            x = x.float()
         return x.numpy()
     return np.array(x)
 
@@ -274,7 +276,8 @@ def main():
             pil_image = Image.fromarray(rgb)
 
             t_set = time.time()
-            inference_state = processor.set_image(pil_image)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                inference_state = processor.set_image(pil_image)
             set_image_time = time.time() - t_set
 
             all_boxes = []
@@ -283,10 +286,11 @@ def main():
 
             t_prompt = time.time()
             for concept in CONCEPTS:
-                output = processor.set_text_prompt(
-                    state=inference_state,
-                    prompt=concept
-                )
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    output = processor.set_text_prompt(
+                        state=inference_state,
+                        prompt=concept
+                    )
 
                 boxes = to_numpy(output.get("boxes", []))
                 masks = output.get("masks", [])

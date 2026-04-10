@@ -1,13 +1,13 @@
 {
   "status": "running",
-  "model_load_time_ms": 9308.9,
-  "capture_fps": 2,
+  "model_load_time_ms": 9320.4,
+  "capture_fps": 0,
   "pred_fps": 0,
-  "set_image_ms": 19.9,
-  "prompt_ms": 529.9,
+  "set_image_ms": 23.9,
+  "prompt_ms": 238.4,
   "objects": 0,
   "concepts": [
     "packet"
   ],
-  "updated_at": 1775716230.9566078
+  "updated_at": 1775726596.5847356
 }

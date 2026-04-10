@@ -2,7 +2,7 @@ import time
 import cv2
 import numpy as np
 from PIL import Image
-
+import torch
 from sam3.model_builder import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
 
@@ -99,7 +99,9 @@ def to_numpy(x):
         x = x.detach()
     if hasattr(x, "cpu"):
         x = x.cpu()
-    if hasattr(x, "numpy"):
+    if torch.is_tensor(x):
+        if x.dtype == torch.bfloat16:
+            x = x.float()
         return x.numpy()
     return np.array(x)
 
@@ -188,7 +190,8 @@ def main():
 
             # set_image
             t0 = time.time()
-            inference_state = processor.set_image(pil_image)
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                inference_state = processor.set_image(pil_image)
             set_image_time = time.time() - t0
 
             all_boxes = []
@@ -198,10 +201,12 @@ def main():
             # text prompt inference
             t1 = time.time()
             for concept in concepts:
-                output = processor.set_text_prompt(
-                    state=inference_state,
-                    prompt=concept
-                )
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+
+                    output = processor.set_text_prompt(
+                        state=inference_state,
+                        prompt=concept
+                    )
 
                 boxes = to_numpy(output.get("boxes", []))
                 masks = output.get("masks", [])
