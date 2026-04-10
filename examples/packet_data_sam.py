@@ -25,7 +25,7 @@ CAMERA_TYPE = "orbbec"
 SCORE_THRESH = 0.10
 MASK_THRESH = 0.5
 MASK_ALPHA = 0.35
-CONCEPTS = ["packet"]
+CONCEPTS = ["mealkit packet"]
 
 SEND_DEPTH = True
 SEND_ONLY_WHEN_OBJECT = False   # True면 객체 있을 때만 전송

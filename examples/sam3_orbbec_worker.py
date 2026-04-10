@@ -30,7 +30,7 @@ CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
 SCORE_THRESH = 0.10
 MASK_THRESH = 0.5
 MASK_ALPHA = 0.35
-CONCEPTS = ["packet"]
+CONCEPTS = ["mealkit packet"]
 
 
 # =========================================================
