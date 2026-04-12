@@ -27,7 +27,7 @@ from ultralytics import YOLO
 # =========================================================
 # Config
 # =========================================================
-MODEL_PATH = "/home/nvidia/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
+MODEL_PATH = "/home/swcho/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
 
 SERVER_IP = "192.168.1.142"
 SERVER_PORT = 9000

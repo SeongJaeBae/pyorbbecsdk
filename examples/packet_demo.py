@@ -24,7 +24,7 @@ from ultralytics import YOLO
 # =========================================================
 # Config
 # =========================================================
-MODEL_PATH = "/home/nvidia/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
+MODEL_PATH = "/home/swcho/workspace/pyorbbecsdk/examples/obb_best_260109.pt"
 
 CAPTURE_FPS = 30
 CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
