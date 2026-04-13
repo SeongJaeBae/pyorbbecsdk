@@ -40,6 +40,8 @@ MASK_THRESH = 0.5
 CONCEPTS = ["mealkit packet"]
 
 SEND_DEPTH = True
+SEND_PRED = True
+SEND_POINTCLOUD = True
 SEND_ONLY_WHEN_OBJECT = False   # True면 객체 있을 때만 서버 전송
 SEND_INTERVAL_SEC = 1.0         # 서버 전송 주기
 SAVE_INTERVAL_SEC = 1.0         # output dir 저장 주기
@@ -144,6 +146,7 @@ def build_detection_label_text(boxes, scores):
         return ""
     return "\n".join(lines) + "\n"
 
+
 def overlay_sam3_results(
     frame_bgr,
     masks,
@@ -173,6 +176,7 @@ def overlay_sam3_results(
         if mask_np.ndim != 2:
             continue
 
+        orig_h, orig_w = mask_np.shape[:2]
         mask_bin = (mask_np > MASK_THRESH).astype(np.uint8)
 
         if mask_bin.shape[0] != h or mask_bin.shape[1] != w:
@@ -197,9 +201,9 @@ def overlay_sam3_results(
             box = np.array(boxes[i][:4], dtype=np.float32)
             x1, y1, x2, y2 = box
 
-            if mask_np.shape[1] > 0 and mask_np.shape[0] > 0:
-                sx = w / float(mask_np.shape[1])
-                sy = h / float(mask_np.shape[0])
+            if orig_w > 0 and orig_h > 0:
+                sx = w / float(orig_w)
+                sy = h / float(orig_h)
                 x1 *= sx
                 x2 *= sx
                 y1 *= sy
@@ -221,6 +225,61 @@ def overlay_sam3_results(
                 )
 
     return vis
+
+
+def point_cloud_to_ply_bytes(pc_frame):
+    if pc_frame is None:
+        return None
+
+    data = pc_frame.get_data()
+    if data is None:
+        return None
+
+    points_np = np.frombuffer(data, dtype=np.float32)
+    if points_np.size == 0:
+        return None
+
+    # RGB_POINT -> x y z r g b(float32 6개) 형태 가정
+    points_np = points_np.reshape(-1, 6)
+    vertex_count = points_np.shape[0]
+
+    header = f"""ply
+format binary_little_endian 1.0
+element vertex {vertex_count}
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header
+"""
+    header_bytes = header.encode("utf-8")
+
+    xyz = points_np[:, :3]
+    rgb = points_np[:, 3:6].astype(np.uint8)
+
+    structured = np.empty(
+        vertex_count,
+        dtype=[
+            ("x", np.float32),
+            ("y", np.float32),
+            ("z", np.float32),
+            ("r", np.uint8),
+            ("g", np.uint8),
+            ("b", np.uint8),
+        ]
+    )
+    structured["x"] = xyz[:, 0]
+    structured["y"] = xyz[:, 1]
+    structured["z"] = xyz[:, 2]
+    structured["r"] = rgb[:, 0]
+    structured["g"] = rgb[:, 1]
+    structured["b"] = rgb[:, 2]
+
+    return header_bytes + structured.tobytes()
+
+
 # =========================
 # TCP Sender
 # =========================
@@ -434,6 +493,9 @@ def main():
     cam = OrbbecCamera(warmup_frames=15, timeout_ms=1000)
     sender = PersistentSender(SERVER_IP, SERVER_PORT, log_callback=log_line)
 
+    point_cloud_filter = PointCloudFilter()
+    point_cloud_filter.set_create_point_format(OBFormat.RGB_POINT)
+
     cam.open()
 
     last_send_time = 0.0
@@ -485,8 +547,7 @@ def main():
                 )
                 pred_fps_count = 0
                 pred_fps_last = now
-            
-            
+
             pred_vis = overlay_sam3_results(
                 frame,
                 all_masks,
@@ -543,7 +604,18 @@ def main():
                         capture_id
                     )
 
-                # 2) label 전송
+                # 2) prediction 전송
+                if SEND_PRED:
+                    ok, encoded_pred = cv2.imencode(".jpg", pred_vis)
+                    if ok:
+                        sender.send(
+                            encoded_pred.tobytes(),
+                            f"pred_{capture_id}.jpg",
+                            "prediction",
+                            capture_id
+                        )
+
+                # 3) label 전송
                 if label_str.strip():
                     sender.send(
                         label_str.encode("utf-8"),
@@ -552,7 +624,7 @@ def main():
                         capture_id
                     )
 
-                # 3) depth 전송
+                # 4) depth 전송
                 if SEND_DEPTH and depth_vis is not None:
                     ok, encoded_depth = cv2.imencode(".jpg", depth_vis)
                     if ok:
@@ -562,6 +634,22 @@ def main():
                             "depth",
                             capture_id
                         )
+
+                # 5) point cloud(.ply) 전송
+                if SEND_POINTCLOUD and frames is not None:
+                    try:
+                        pc_frame = point_cloud_filter.process(frames)
+                        if pc_frame is not None:
+                            ply_bytes = point_cloud_to_ply_bytes(pc_frame)
+                            if ply_bytes is not None:
+                                sender.send(
+                                    ply_bytes,
+                                    f"cloud_{capture_id}.ply",
+                                    "pointcloud",
+                                    capture_id
+                                )
+                    except Exception as e:
+                        log_line(f"[POINTCLOUD ERROR] {e}")
 
                 last_send_time = now
 
