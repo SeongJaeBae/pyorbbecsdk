@@ -45,10 +45,10 @@ SEND_POINTCLOUD = True
 SEND_ONLY_WHEN_OBJECT = False   # True면 객체 있을 때만 pred/label/depth/pcd 전송
 
 # ---- 캡처/전송 주기 ----
-CAPTURE_FPS = 5                  # 카메라 폴링 속도 상한(CPU 보호용)
+CAPTURE_FPS = 30                  # 카메라 폴링 속도 상한(CPU 보호용)
 CAPTURE_INTERVAL = 1.0 / CAPTURE_FPS
 
-RGB_SEND_FPS = 5                 # RGB만 서버로 스트리밍하는 속도
+RGB_SEND_FPS = 10                 # RGB만 서버로 스트리밍하는 속도
 RGB_SEND_INTERVAL = 1.0 / RGB_SEND_FPS
 
 INFER_INTERVAL_SEC = 1.0          # SAM3 추론 + pcd + pred 전송 주기
@@ -58,25 +58,15 @@ SAVE_INTERVAL_SEC = 1.0           # sam3_live_output 로컬 저장 주기
 # False로 바꾸면 모션과 무관하게 매 INFER_INTERVAL_SEC마다 무조건 추론합니다.
 REQUIRE_MOTION_FOR_INFER = True
 
-# ---- 카메라 해상도/fps (하드웨어 프로파일 선택) ----
-# 실제로 이 조합을 지원하는지는 카메라 모델마다 다르므로,
-# 실행 로그의 "[CAM] Color: ..." 라인에서 실제 선택된 값을 꼭 확인할 것.
-CAM_WIDTH = 1280
-CAM_HEIGHT = 720
-CAM_FPS = 10       # 예: 30. 10처럼 지원하지 않는 값이면 자동으로 기본 프로파일로 폴백됨.
-
 USE_AUTOCAST = True
 AUTOCAST_DTYPE = torch.bfloat16
 
 # ---- 모션 감지 설정 ----
 MOTION_ENABLED = True
-MOTION_SENSITIVITY = 50000      # 픽셀 변화량 임계치(값이 클수록 둔감)
-                                 # ROI 적용으로 픽셀 수가 줄어서 기존 56000에서 비례 축소
-                                 # (56000 * 567*718 / 1280*720 ≈ 24700) — 실측 후 재튜닝 권장
+MOTION_SENSITIVITY = 55000      # 픽셀 변화량 임계치(값이 클수록 둔감)
 MOTION_THRESHOLD = 25           # 프레임 diff 이진화 임계치
 BLUR_KERNEL = (21, 21)
 MOTION_COOLDOWN_SEC = 0.2       # 모션 트리거 최소 간격
-MOTION_ROI = (247, 2, 567, 718) # (x, y, w, h) - 컨베이어 벨트 영역만 모션 감지 대상으로 사용
 
 
 # =========================
@@ -131,10 +121,7 @@ def to_numpy(x):
 
 
 # ---- 모션 감지 함수 ----
-def preprocess_for_motion(frame_bgr: np.ndarray, roi=None) -> np.ndarray:
-    if roi is not None:
-        x, y, w, h = roi
-        frame_bgr = frame_bgr[y:y + h, x:x + w]
+def preprocess_for_motion(frame_bgr: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     return cv2.GaussianBlur(gray, BLUR_KERNEL, 0)
 
@@ -415,65 +402,6 @@ class PersistentSender:
 
 
 # =========================
-# Orbbec 프로파일 검색 helper
-# =========================
-def find_video_profile(profile_list, width, height, fps, preferred_formats=None):
-    """
-    width/height/fps에 맞는 프로파일을 찾아서 반환. 없으면 None.
-
-    pyorbbecsdk의 get_video_stream_profile()은 인덱스 기반 순회가 아니라
-    (width, height, format, fps) 4개 인자를 모두 받아서 정확히 일치하는
-    프로파일을 조회하는 함수다. 포맷을 모르면 여러 후보 포맷을 순서대로
-    시도해서 맞는 걸 찾는다.
-    """
-    if profile_list is None:
-        return None
-
-    formats_to_try = list(preferred_formats) if preferred_formats else []
-
-    # 이 센서의 기본 프로파일이 쓰는 포맷을 최우선 후보로 시도
-    try:
-        default_profile = profile_list.get_default_video_stream_profile()
-        if default_profile is not None:
-            default_format = default_profile.get_format()
-            if default_format not in formats_to_try:
-                formats_to_try.insert(0, default_format)
-    except Exception:
-        pass
-
-    # 흔히 쓰이는 포맷들도 후보로 추가 (이미 있으면 중복 스킵)
-    for fmt_name in ["MJPG", "RGB", "YUYV", "NV12", "Y16", "Y8", "UYVY"]:
-        fmt = getattr(OBFormat, fmt_name, None)
-        if fmt is not None and fmt not in formats_to_try:
-            formats_to_try.append(fmt)
-
-    for fmt in formats_to_try:
-        try:
-            profile = profile_list.get_video_stream_profile(width, height, fmt, fps)
-            if profile is not None:
-                return profile
-        except OBError:
-            continue
-        except Exception:
-            continue
-
-    return None
-
-
-def probe_supported_fps(profile_list, width, height, fps_candidates=(5, 10, 15, 24, 30, 60)):
-    """
-    해당 해상도에서 실제로 조회에 성공하는 fps 값들을 후보군에서 찾아 로그용으로 반환.
-    (진짜 "전체 목록"은 아니고, 흔한 fps 후보 + 흔한 포맷을 시도해보는 프로브 방식)
-    """
-    supported = []
-    for fps in fps_candidates:
-        profile = find_video_profile(profile_list, width, height, fps)
-        if profile is not None:
-            supported.append((fps, profile.get_format()))
-    return supported
-
-
-# =========================
 # Orbbec Camera Wrapper
 # =========================
 class OrbbecCamera:
@@ -491,44 +419,17 @@ class OrbbecCamera:
         self.config = Config()
 
         try:
-            # ---- Color ----
             profile_list = self.pipeline.get_stream_profile_list(OBSensorType.COLOR_SENSOR)
             if profile_list is not None:
-                probed = probe_supported_fps(profile_list, CAM_WIDTH, CAM_HEIGHT)
-                log_line(f"[CAM] Color {CAM_WIDTH}x{CAM_HEIGHT} probed fps/format: {probed}")
-
-                color_profile = find_video_profile(profile_list, CAM_WIDTH, CAM_HEIGHT, CAM_FPS)
-                if color_profile is None:
-                    log_line(
-                        f"[WARN] Color {CAM_WIDTH}x{CAM_HEIGHT}@{CAM_FPS}fps not supported, "
-                        f"falling back to default profile"
-                    )
-                    color_profile = profile_list.get_default_video_stream_profile()
-
+                color_profile = profile_list.get_default_video_stream_profile()
                 self.config.enable_stream(color_profile)
                 self.has_color = True
-                log_line(
-                    f"[CAM] Color selected: {color_profile.get_width()}x{color_profile.get_height()} "
-                    f"@ {color_profile.get_fps()}fps"
-                )
 
-            # ---- Depth ----
             depth_profile_list = self.pipeline.get_stream_profile_list(OBSensorType.DEPTH_SENSOR)
             if depth_profile_list is not None:
-                depth_profile = find_video_profile(depth_profile_list, CAM_WIDTH, CAM_HEIGHT, CAM_FPS)
-                if depth_profile is None:
-                    log_line(
-                        f"[WARN] Depth {CAM_WIDTH}x{CAM_HEIGHT}@{CAM_FPS}fps not supported, "
-                        f"falling back to default profile"
-                    )
-                    depth_profile = depth_profile_list.get_default_video_stream_profile()
-
+                depth_profile = depth_profile_list.get_default_video_stream_profile()
                 self.config.enable_stream(depth_profile)
                 self.has_depth = True
-                log_line(
-                    f"[CAM] Depth selected: {depth_profile.get_width()}x{depth_profile.get_height()} "
-                    f"@ {depth_profile.get_fps()}fps"
-                )
 
             self.config.set_frame_aggregate_output_mode(
                 OBFrameAggregateOutputMode.FULL_FRAME_REQUIRE
@@ -678,12 +579,12 @@ def capture_loop(
         if frame is None:
             continue
 
-        # ---- 모션 감지 (MOTION_ROI 영역만 대상으로) ----
+        # ---- 모션 감지 ----
         motion_detected = False
         motion_score = 0
 
         if MOTION_ENABLED:
-            curr_gray = preprocess_for_motion(frame, roi=MOTION_ROI)
+            curr_gray = preprocess_for_motion(frame)
             if prev_gray is None:
                 prev_gray = curr_gray
             else:

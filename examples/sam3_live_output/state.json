@@ -1,13 +1,16 @@
 {
   "status": "running",
-  "model_load_time_ms": 9632.7,
-  "pred_fps": 2,
-  "set_image_ms": 29.1,
-  "prompt_ms": 267.3,
+  "model_load_time_ms": 9515.7,
+  "pred_fps": 1,
+  "set_image_ms": 48.0,
+  "prompt_ms": 245.2,
   "objects": 0,
   "concepts": [
     "mealkit packet"
   ],
-  "has_object": false,
-  "updated_at": 1776065601.7771826
+  "motion_enabled": true,
+  "motion_score": 37993,
+  "motion_detected": false,
+  "updated_at": 1785719775.86192,
+  "has_object": false
 }

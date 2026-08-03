@@ -1,0 +1,16 @@
+#Terminal 1
+
+sam3_env
+
+cd /home/nvidia/workspace/pyorbbecsdk/examples
+
+python3 packet_data_sam.py
+
+# Terminal 2
+
+
+sam3_env
+
+cd /home/nvidia/workspace/pyorbbecsdk/examples
+
+python3 packet_sam_data_vis.py
