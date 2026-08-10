@@ -37,7 +37,7 @@ LOG_PATH = os.path.join(OUTPUT_DIR, "viewer.log")
 
 SCORE_THRESH = 0.10
 MASK_THRESH = 0.5
-CONCEPTS = ["mealkit packet"]
+CONCEPTS = ["food packet"]
 
 SEND_DEPTH = True
 SEND_PRED = True
@@ -61,8 +61,8 @@ REQUIRE_MOTION_FOR_INFER = True
 # ---- 카메라 해상도/fps (하드웨어 프로파일 선택) ----
 # 실제로 이 조합을 지원하는지는 카메라 모델마다 다르므로,
 # 실행 로그의 "[CAM] Color: ..." 라인에서 실제 선택된 값을 꼭 확인할 것.
-CAM_WIDTH = 1280
-CAM_HEIGHT = 720
+CAM_WIDTH = 1920
+CAM_HEIGHT = 1080
 CAM_FPS = 10       # 예: 30. 10처럼 지원하지 않는 값이면 자동으로 기본 프로파일로 폴백됨.
 
 USE_AUTOCAST = True
@@ -70,14 +70,22 @@ AUTOCAST_DTYPE = torch.bfloat16
 
 # ---- 모션 감지 설정 ----
 MOTION_ENABLED = True
-MOTION_SENSITIVITY = 50000      # 픽셀 변화량 임계치(값이 클수록 둔감)
+#1280
+# MOTION_SENSITIVITY = 50000      # 픽셀 변화량 임계치(값이 클수록 둔감)
+                                 # ROI 적용으로 픽셀 수가 줄어서 기존 56000에서 비례 축소
+                                 # (56000 * 567*718 / 1280*720 ≈ 24700) — 실측 후 재튜닝 권장
+
+                                 
+MOTION_SENSITIVITY = 130000      # 픽셀 변화량 임계치(값이 클수록 둔감)
                                  # ROI 적용으로 픽셀 수가 줄어서 기존 56000에서 비례 축소
                                  # (56000 * 567*718 / 1280*720 ≈ 24700) — 실측 후 재튜닝 권장
 MOTION_THRESHOLD = 25           # 프레임 diff 이진화 임계치
 BLUR_KERNEL = (21, 21)
 MOTION_COOLDOWN_SEC = 0.2       # 모션 트리거 최소 간격
-MOTION_ROI = (247, 2, 567, 718) # (x, y, w, h) - 컨베이어 벨트 영역만 모션 감지 대상으로 사용
-
+# 1280 * 720
+# MOTION_ROI = (247, 2, 567, 718) # (x, y, w, h) - 컨베이어 벨트 영역만 모션 감지 대상으로 사용
+# 1920 * 1080
+MOTION_ROI = (391, 2, 822, 1078) # (x, y, w, h) - 컨베이어 벨트 영역만 모션 감지 대상으로 사용
 
 # =========================
 # Utils
