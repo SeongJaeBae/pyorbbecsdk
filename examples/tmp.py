@@ -65,6 +65,22 @@ CAM_WIDTH = 1920
 CAM_HEIGHT = 1080
 CAM_FPS = 10       # 예: 30. 10처럼 지원하지 않는 값이면 자동으로 기본 프로파일로 폴백됨.
 
+# ---- 컬러 카메라 노출(Exposure) 설정 ----
+# COLOR_AUTO_EXPOSURE = True  : 자동 노출(AE) 사용. 아래 수동 값들은 무시됨.
+# COLOR_AUTO_EXPOSURE = False : 자동 노출을 끄고 COLOR_EXPOSURE_VALUE(+선택적으로
+#                                COLOR_GAIN_VALUE)를 수동으로 적용.
+# 컨베이어 벨트처럼 조명이 일정한 환경에서는 AE를 끄고 고정값을 쓰는 편이
+# 프레임마다 밝기가 흔들리지 않아 SAM3/OCR 인식에 유리한 경우가 많습니다.
+# COLOR_AUTO_EXPOSURE = True
+# COLOR_EXPOSURE_VALUE = 300      # AE OFF일 때 사용할 수동 노출값 (raw property 값,
+#                                  # 실제 밝기 단위는 장비/SDK 문서 기준. 값을 올릴수록 밝아짐)
+
+                                 
+COLOR_AUTO_EXPOSURE = False
+COLOR_EXPOSURE_VALUE = 1500      # AE OFF일 때 사용할 수동 노출값 (raw property 값,
+                                 # 실제 밝기 단위는 장비/SDK 문서 기준. 값을 올릴수록 밝아짐)
+COLOR_GAIN_VALUE = None         # None이면 게인은 건드리지 않음. 정수를 주면 수동 게인 적용.
+
 USE_AUTOCAST = True
 AUTOCAST_DTYPE = torch.bfloat16
 
@@ -76,7 +92,7 @@ MOTION_ENABLED = True
                                  # (56000 * 567*718 / 1280*720 ≈ 24700) — 실측 후 재튜닝 권장
 
                                  
-MOTION_SENSITIVITY = 130000      # 픽셀 변화량 임계치(값이 클수록 둔감)
+MOTION_SENSITIVITY = 50000      # 픽셀 변화량 임계치(값이 클수록 둔감)
                                  # ROI 적용으로 픽셀 수가 줄어서 기존 56000에서 비례 축소
                                  # (56000 * 567*718 / 1280*720 ≈ 24700) — 실측 후 재튜닝 권장
 MOTION_THRESHOLD = 25           # 프레임 diff 이진화 임계치
@@ -488,6 +504,7 @@ class OrbbecCamera:
     def __init__(self, warmup_frames=15, timeout_ms=1000):
         self.pipeline = None
         self.config = None
+        self.device = None
         self.started = False
         self.warmup_frames = warmup_frames
         self.timeout_ms = timeout_ms
@@ -497,6 +514,7 @@ class OrbbecCamera:
     def open(self):
         self.pipeline = Pipeline()
         self.config = Config()
+        self.device = self.pipeline.get_device()
 
         try:
             # ---- Color ----
@@ -548,6 +566,10 @@ class OrbbecCamera:
         self.pipeline.start(self.config)
         self.started = True
 
+        # 스트림이 시작되어 device가 활성화된 상태에서 노출을 설정한다.
+        # (워밍업 프레임을 버리기 전에 적용해야 워밍업 동안 노출이 안정된다)
+        self._apply_exposure_settings()
+
         for _ in range(self.warmup_frames):
             try:
                 self.pipeline.wait_for_frames(self.timeout_ms)
@@ -559,6 +581,97 @@ class OrbbecCamera:
 
         log_line("Orbbec camera opened.")
 
+    def _apply_exposure_settings(self):
+        """
+        Config의 COLOR_AUTO_EXPOSURE / COLOR_EXPOSURE_VALUE / COLOR_GAIN_VALUE에
+        따라 컬러 카메라 노출을 설정한다. 디바이스 프로퍼티 호출이라 프레임
+        단위 호출(get_format/as_video_frame 등)과는 무관하게 안전하지만,
+        모델/펌웨어에 따라 프로퍼티 자체가 지원되지 않을 수 있으므로 실패해도
+        파이프라인 전체가 죽지 않도록 각 호출을 개별적으로 try/except 한다.
+        """
+        if self.device is None:
+            log_line("[CAM][WARN] device가 없어 노출 설정을 건너뜁니다.")
+            return
+
+        try:
+            self.device.set_bool_property(
+                OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL,
+                bool(COLOR_AUTO_EXPOSURE),
+            )
+            log_line(f"[CAM] Auto exposure = {COLOR_AUTO_EXPOSURE}")
+        except Exception as e:
+            log_line(f"[CAM][WARN] Auto exposure 설정 실패: {e}")
+
+        if not COLOR_AUTO_EXPOSURE:
+            if COLOR_EXPOSURE_VALUE is not None:
+                try:
+                    self.device.set_int_property(
+                        OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT,
+                        int(COLOR_EXPOSURE_VALUE),
+                    )
+                    log_line(f"[CAM] Manual exposure = {COLOR_EXPOSURE_VALUE}")
+                except Exception as e:
+                    log_line(f"[CAM][WARN] 수동 exposure 설정 실패: {e}")
+
+            if COLOR_GAIN_VALUE is not None:
+                try:
+                    self.device.set_int_property(
+                        OBPropertyID.OB_PROP_COLOR_GAIN_INT,
+                        int(COLOR_GAIN_VALUE),
+                    )
+                    log_line(f"[CAM] Gain = {COLOR_GAIN_VALUE}")
+                except Exception as e:
+                    log_line(f"[CAM][WARN] Gain 설정 실패: {e}")
+
+    def get_exposure_status(self):
+        """
+        현재 디바이스에서 실제로 적용 중인 노출 관련 값을 읽어서 dict로 반환한다.
+        (설정값이 아니라 device.get_*_property()로 조회한 '실측' 값)
+        AE가 켜져 있으면 exposure/gain도 카메라가 자동으로 계속 바꾸므로,
+        state.json을 볼 때 실시간 값을 확인할 수 있도록 매번 새로 조회한다.
+        읽기가 실패하는 항목은 None으로 채워서 반환한다 (파이프라인은 안 죽음).
+        """
+        status = {
+            "auto_exposure": None,
+            "exposure": None,
+            "gain": None,
+            "configured_auto_exposure": bool(COLOR_AUTO_EXPOSURE),
+            "configured_exposure_value": COLOR_EXPOSURE_VALUE,
+            "configured_gain_value": COLOR_GAIN_VALUE,
+        }
+
+        if self.device is None:
+            return status
+
+        try:
+            status["auto_exposure"] = bool(
+                self.device.get_bool_property(
+                    OBPropertyID.OB_PROP_COLOR_AUTO_EXPOSURE_BOOL
+                )
+            )
+        except Exception:
+            pass
+
+        try:
+            status["exposure"] = int(
+                self.device.get_int_property(
+                    OBPropertyID.OB_PROP_COLOR_EXPOSURE_INT
+                )
+            )
+        except Exception:
+            pass
+
+        try:
+            status["gain"] = int(
+                self.device.get_int_property(
+                    OBPropertyID.OB_PROP_COLOR_GAIN_INT
+                )
+            )
+        except Exception:
+            pass
+
+        return status
+
     def close(self):
         if self.pipeline and self.started:
             try:
@@ -569,6 +682,7 @@ class OrbbecCamera:
         self.started = False
         self.pipeline = None
         self.config = None
+        self.device = None
         log_line("Orbbec camera closed.")
 
     def grab_frames(self):
@@ -715,10 +829,13 @@ def capture_loop(
             if depth_vis is not None:
                 atomic_write_image(DEPTH_PATH, depth_vis)
 
+            exposure_status = cam.get_exposure_status()
+
             shared_state.update(
                 motion_enabled=MOTION_ENABLED,
                 motion_score=motion_score,
                 motion_detected=motion_detected,
+                exposure=exposure_status,
             )
             last_save_time = now
 
@@ -918,6 +1035,7 @@ def main():
         motion_enabled=MOTION_ENABLED,
         motion_score=0,
         motion_detected=False,
+        exposure=cam.get_exposure_status(),
     )
 
     capture_thread = threading.Thread(

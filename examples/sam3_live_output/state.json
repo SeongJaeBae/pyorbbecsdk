@@ -1,16 +1,24 @@
 {
   "status": "running",
-  "model_load_time_ms": 10485.7,
+  "model_load_time_ms": 9669.0,
   "pred_fps": 1,
-  "set_image_ms": 53.3,
-  "prompt_ms": 238.5,
-  "objects": 2,
+  "set_image_ms": 48.2,
+  "prompt_ms": 269.3,
+  "objects": 0,
   "concepts": [
     "food packet"
   ],
   "motion_enabled": true,
-  "motion_score": 120654,
+  "motion_score": 40136,
   "motion_detected": false,
-  "updated_at": 1786326942.0224898,
-  "has_object": true
+  "exposure": {
+    "auto_exposure": false,
+    "exposure": 1500,
+    "gain": 101,
+    "configured_auto_exposure": false,
+    "configured_exposure_value": 1500,
+    "configured_gain_value": null
+  },
+  "updated_at": 1787126522.5054374,
+  "has_object": false
 }
