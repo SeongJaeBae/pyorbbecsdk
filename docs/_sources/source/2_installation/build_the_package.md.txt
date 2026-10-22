@@ -1,4 +1,4 @@
-# Build from Source
+# Build from Source (Traditional CMake Method - Deprecated)
 
 Before you start: Normally, installing with the provided .whl package is sufficient. If the installation fails or you need custom features, you can build the Python Wrapper from source.
 
@@ -80,8 +80,7 @@ cd pyorbbecsdk
 export PYTHONPATH=$PYTHONPATH:$(pwd)/install/lib/
 sudo bash ./scripts/env_setup/install_udev_rules.sh
 sudo udevadm control --reload-rules && sudo udevadm trigger
-python3 examples/depth.py
-python3 examples/net_device.py # Requires ffmpeg installation for network devices
+python3 examples/beginner/02_depth_visualization.py
 ```
 
 ### Generate Python Stubs
@@ -178,5 +177,5 @@ Method 1: Use Cmake, click the "Open Project" button, and open the Visual Studio
 
 ### Test Examples
 
-In the examples directory, execute test examples such as python color.py, as shown below:
+In the examples directory, execute test examples such as python examples/beginner/02_depth_visualization.py, as shown below:
   ![Multi_camera1](../image/Win_Config_image11.png)

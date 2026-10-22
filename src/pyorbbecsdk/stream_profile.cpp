@@ -42,8 +42,13 @@ void define_stream_profile(const py::object &m) {
            [](const std::shared_ptr<ob::StreamProfile> &self) {
              OB_TRY_CATCH({ return self->is<ob::GyroStreamProfile>(); });
            })
+      .def("is_lidar_stream_profile",
+           [](const std::shared_ptr<ob::StreamProfile> &self) {
+             OB_TRY_CATCH({ return self->is<ob::LiDARStreamProfile>(); });
+           })
       .def("as_video_stream_profile",
-           [](std::shared_ptr<ob::StreamProfile> &self) {
+           [](std::shared_ptr<ob::StreamProfile> &self)
+               -> std::shared_ptr<ob::VideoStreamProfile> {
              OB_TRY_CATCH({
                if (!self->is<ob::VideoStreamProfile>()) {
                  throw std::invalid_argument("Not a video stream profile");
@@ -52,7 +57,8 @@ void define_stream_profile(const py::object &m) {
              });
            })
       .def("as_accel_stream_profile",
-           [](std::shared_ptr<ob::StreamProfile> &self) {
+           [](std::shared_ptr<ob::StreamProfile> &self)
+               -> std::shared_ptr<ob::AccelStreamProfile> {
              OB_TRY_CATCH({
                if (!self->is<ob::AccelStreamProfile>()) {
                  throw std::invalid_argument("Not an accel stream profile");
@@ -61,7 +67,8 @@ void define_stream_profile(const py::object &m) {
              });
            })
       .def("as_gyro_stream_profile",
-           [](std::shared_ptr<ob::StreamProfile> &self) {
+           [](std::shared_ptr<ob::StreamProfile> &self)
+               -> std::shared_ptr<ob::GyroStreamProfile> {
              OB_TRY_CATCH({
                if (!self->is<ob::GyroStreamProfile>()) {
                  throw std::invalid_argument("Not a gyro stream profile");
@@ -70,7 +77,8 @@ void define_stream_profile(const py::object &m) {
              });
            })
       .def("as_lidar_stream_profile",
-           [](std::shared_ptr<ob::StreamProfile> &self) {
+           [](std::shared_ptr<ob::StreamProfile> &self)
+               -> std::shared_ptr<ob::LiDARStreamProfile> {
              OB_TRY_CATCH({
                if (!self->is<ob::LiDARStreamProfile>()) {
                  throw std::invalid_argument("Not a lidar stream profile");
@@ -126,6 +134,16 @@ void define_video_stream_profile(const py::object &m) {
            [](const std::shared_ptr<ob::VideoStreamProfile> &self) {
              OB_TRY_CATCH({ return self->getDecimationConfig(); });
            })
+      .def("set_intrinsic",
+           [](const std::shared_ptr<ob::VideoStreamProfile> &self,
+              const OBCameraIntrinsic &intrinsic) {
+             OB_TRY_CATCH({ self->setIntrinsic(intrinsic); });
+           })
+      .def("set_distortion",
+           [](const std::shared_ptr<ob::VideoStreamProfile> &self,
+              const OBCameraDistortion &distortion) {
+             OB_TRY_CATCH({ self->setDistortion(distortion); });
+           })
       .def("__repr__", [](const std::shared_ptr<ob::VideoStreamProfile> &self) {
         OB_TRY_CATCH({
           return "<VideoStreamProfile: " + std::to_string(self->width()) + "x" +
@@ -175,8 +193,8 @@ void define_gyro_stream_profile(const py::object &m) {
            })
       .def("__repr__", [](const std::shared_ptr<ob::GyroStreamProfile> &self) {
         OB_TRY_CATCH({
-          return "<GyroStreamProfile: " + std::to_string(self->fullScaleRange()) +
-                 ">";
+          return "<GyroStreamProfile: " +
+                 std::to_string(self->fullScaleRange()) + ">";
         });
       });
 }

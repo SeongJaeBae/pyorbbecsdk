@@ -76,10 +76,32 @@ OB_EXPORT void ob_enable_net_device_enumeration(ob_context *context, bool enable
  * @param[out] error Pointer to an error object that will be populated if an error occurs.
  *
  * @return bool true if the configuration command was processed successfully, false otherwise.
- *
- * @note This applies to all GigE Vision devices
+ * @note This applies to all GVCP devices
  */
 OB_EXPORT bool ob_force_ip_config(const char *macAddress, ob_net_ip_config config, ob_error **error);
+
+/**
+ * @brief Set the GVCP port scheme used for network device discovery and control.
+ *
+ * @param[in] context Pointer to the context object.
+ * @param[in] scheme Target GVCP port scheme.
+ *                   Return error if the specified scheme is invalid or unsupported.
+ * @param[out] error Pointer to an error object that will be populated if an error occurs.
+ *
+ * @note This change affects only the current session and is not persisted.
+ * @note Switching to a different scheme will force disconnection of all currently connected network devices.
+ */
+OB_EXPORT void ob_set_gvcp_port_scheme(ob_context *context, ob_gvcp_port_scheme scheme, ob_error **error);
+
+/**
+ * @brief Get the current GVCP port scheme.
+ *
+ * @param[in] context Pointer to the context object
+ * @param[out] error Pointer to an error object that will be populated if an error occurs.
+ *
+ * @return Current GVCP port scheme.
+ */
+OB_EXPORT ob_gvcp_port_scheme ob_get_gvcp_port_scheme(ob_context *context, ob_error **error);
 
 /**
  * @brief Create a network device object
@@ -110,7 +132,7 @@ OB_EXPORT ob_device *ob_create_net_device_ex(ob_context *context, const char *ad
 
 /**
  * @brief Set a device plug-in callback function
- * 
+ *
  * @deprecated This function is deprecated. Please use ob_register_device_changed_callback() instead.
  *
  * @attention The added and removed device lists returned through the callback interface need to be released manually
@@ -161,6 +183,15 @@ OB_EXPORT void ob_unregister_device_changed_callback(ob_context *context, ob_cal
  * @param[out] error Pointer to an error object that will be populated if an error occurs during execution
  */
 OB_EXPORT void ob_enable_device_clock_sync(ob_context *context, uint64_t repeat_interval_msec, ob_error **error);
+
+/**
+ * @brief Synchronize the device time (synchronize hardwarePPS time to all created devices)
+ *
+ * @param[in] context Pointer to the context object
+ * @param[in] hardware_pps_time unit: ms.
+ * @param[out] error Pointer to an error object that will be populated if an error occurs during execution
+ */
+OB_EXPORT void ob_sync_device_hardware_pps_time(ob_context *context, uint64_t hardware_pps_time, ob_error **error);
 
 /**
  * @brief Free idle memory from the internal frame memory pool
@@ -258,6 +289,30 @@ OB_EXPORT void ob_log_external_message(ob_log_severity severity, const char *mod
  * @param[out] error Pointer to an error object that will be populated if an error occurs during extensions directory setting
  */
 OB_EXPORT void ob_set_extensions_directory(const char *directory, ob_error **error);
+
+
+/**
+ * @brief Set the host-side timestamp clock type for the current context.
+ *
+ * @attention All ob::Context instances share the same underlying SDK runtime and clock type.
+ * @attention Switching affects frame system and global timestamps; avoid switching during streaming.
+ * @attention It is recommended to synchronize device timestamps after switching.
+ *
+ * @param[in] context Pointer to the context object
+ * @param[in] clock_type The clock type to use for host-side timestamps
+ * @param[out] error Pointer to an error object that will be populated if an error occurs
+ */
+OB_EXPORT void ob_context_set_timestamp_clock_type(ob_context *context, ob_clock_type clock_type, ob_error **error);
+
+/**
+ * @brief Get the current host-side timestamp clock type for the context.
+ *
+ * @param[in] context Pointer to the context object
+ * @param[out] error Pointer to an error object that will be populated if an error occurs
+ *
+ * @return ob_clock_type The current clock type
+ */
+OB_EXPORT ob_clock_type ob_context_get_timestamp_clock_type(const ob_context *context, ob_error **error);
 
 // The following interfaces are deprecated and are retained here for compatibility purposes.
 #define ob_enable_multi_device_sync ob_enable_device_clock_sync

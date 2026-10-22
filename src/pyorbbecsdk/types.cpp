@@ -15,6 +15,7 @@
  *******************************************************************************/
 #include "types.hpp"
 
+#include "error.hpp"
 #include "utils.hpp"
 namespace pyorbbecsdk {
 
@@ -23,11 +24,42 @@ void define_orbbec_types(const py::object &m) {
       .value("PERMISSION_DENY", OB_PERMISSION_DENY)
       .value("PERMISSION_READ", OB_PERMISSION_READ)
       .value("PERMISSION_WRITE", OB_PERMISSION_WRITE)
-      .value("PERMISSION_READ_WRITE", OB_PERMISSION_READ_WRITE);
+      .value("PERMISSION_READ_WRITE", OB_PERMISSION_READ_WRITE)
+      .value("PERMISSION_ANY", OB_PERMISSION_ANY);
 
   py::enum_<OBStatus>(m, "OBStatus")
       .value("STATUS_OK", OB_STATUS_OK)
-      .value("STATUS_ERROR", OB_STATUS_ERROR);
+      .value("STATUS_ERROR", OB_STATUS_ERROR)
+      .value("ERROR_UNKNOWN", OB_ERROR_UNKNOWN)
+      .value("ERROR_INVALID_PARAMETER", OB_ERROR_INVALID_PARAMETER)
+      .value("ERROR_INVALID_DATA", OB_ERROR_INVALID_DATA)
+      .value("ERROR_INVALID_DATA_LEN", OB_ERROR_INVALID_DATA_LEN)
+      .value("ERROR_BUFFER_TOO_SMALL", OB_ERROR_BUFFER_TOO_SMALL)
+      .value("ERROR_MEMORY", OB_ERROR_MEMORY)
+      .value("ERROR_WAIT_TIMEOUT", OB_ERROR_WAIT_TIMEOUT)
+      .value("ERROR_NOT_IMPLEMENTED", OB_ERROR_NOT_IMPLEMENTED)
+      .value("ERROR_UNSUPPORTED_OPERATION", OB_ERROR_UNSUPPORTED_OPERATION)
+      .value("ERROR_WRONG_API_CALL_SEQUENCE", OB_ERROR_WRONG_API_CALL_SEQUENCE)
+      .value("ERROR_NO_DEVICE", OB_ERROR_NO_DEVICE)
+      .value("ERROR_DEVICE_CONNECT_FAILED", OB_ERROR_DEVICE_CONNECT_FAILED)
+      .value("ERROR_DEVICE_ACCESS_DENIED", OB_ERROR_DEVICE_ACCESS_DENIED)
+      .value("ERROR_DEVICE_DISCONNECTED", OB_ERROR_DEVICE_DISCONNECTED)
+      .value("ERROR_DEVICE_UNAVAILABLE", OB_ERROR_DEVICE_UNAVAILABLE)
+      .value("ERROR_ITEM_NOT_FOUND", OB_ERROR_ITEM_NOT_FOUND)
+      .value("ERROR_IO_FAILURE", OB_ERROR_IO_FAILURE)
+      .value("ERROR_RESOURCE_BUSY", OB_ERROR_RESOURCE_BUSY)
+      .value("ERROR_FRAME_QUEUE_OVERFLOW", OB_ERROR_FRAME_QUEUE_OVERFLOW)
+      .value("ERROR_FRAME_DATA", OB_ERROR_FRAME_DATA)
+      .value("ERROR_FRAME_DATA_LEN", OB_ERROR_FRAME_DATA_LEN)
+      .value("ERROR_DEVICE_UNKNOWN", OB_ERROR_DEVICE_UNKNOWN)
+      .value("ERROR_DEVICE_RESPONSE_BAD_MAGIC", OB_ERROR_DEVICE_RESPONSE_BAD_MAGIC)
+      .value("ERROR_DEVICE_RESPONSE_WRONG_ID", OB_ERROR_DEVICE_RESPONSE_WRONG_ID)
+      .value("ERROR_DEVICE_RESPONSE_WRONG_OPCODE", OB_ERROR_DEVICE_RESPONSE_WRONG_OPCODE)
+      .value("ERROR_DEVICE_RESPONSE_WRONG_DATA_SIZE", OB_ERROR_DEVICE_RESPONSE_WRONG_DATA_SIZE)
+      .value("ERROR_DEVICE_RESPONSE_ERROR", OB_ERROR_DEVICE_RESPONSE_ERROR)
+      .value("ERROR_DEVICE_RESPONSE_WARNING", OB_ERROR_DEVICE_RESPONSE_WARNING)
+      .value("ERROR_DEVICE_RESPONSE_CHANNEL_FAILURE",
+             OB_ERROR_DEVICE_RESPONSE_CHANNEL_FAILURE);
 
   py::enum_<OBLogSeverity>(m, "OBLogLevel")
       .value("DEBUG", OB_LOG_SEVERITY_DEBUG)
@@ -45,7 +77,20 @@ void define_orbbec_types(const py::object &m) {
       .value("WRONG_API_CALL_SEQUENCE",
              OB_EXCEPTION_TYPE_WRONG_API_CALL_SEQUENCE)
       .value("NOT_IMPLEMENTED", OB_EXCEPTION_TYPE_NOT_IMPLEMENTED)
-      .value("IO_ERROR", OB_EXCEPTION_TYPE_IO);
+      .value("IO_ERROR", OB_EXCEPTION_TYPE_IO)
+      .value("UNSUPPORTED_OPERATION", OB_EXCEPTION_TYPE_UNSUPPORTED_OPERATION)
+      .value("ACCESS_DENIED", OB_EXCEPTION_TYPE_ACCESS_DENIED)
+      .value("DEVICE_UNAVAILABLE", OB_EXCEPTION_TYPE_DEVICE_UNAVAILABLE)
+      .value("INVALID_DATA", OB_EXCEPTION_TYPE_INVALID_DATA)
+      .value("NOT_FOUND", OB_EXCEPTION_TYPE_NOT_FOUND)
+      .value("RESOURCE_BUSY", OB_EXCEPTION_TYPE_RESOURCE_BUSY)
+      .value(
+          "LICENSE_VERIFY_FAILED",
+          OB_EXCEPTION_TYPE_LICENSE_VERIFY_FAILED,
+          "License verification failed, the device/feature license is "
+          "missing, invalid or expired")
+      .value("STD_EXCEPTION", OB_EXCEPTION_STD_EXCEPTION)
+      .value("TYPE_MEMORY", OB_EXCEPTION_TYPE_MEMORY);
 
   py::enum_<OBSensorType>(m, "OBSensorType")
       .value("UNKNOWN_SENSOR", OB_SENSOR_UNKNOWN)
@@ -223,6 +268,14 @@ void define_orbbec_types(const py::object &m) {
       .def_readwrite("step", &OBUint8PropertyRange::step)
       .def_readwrite("default_value", &OBUint8PropertyRange::def);
 
+  py::class_<OBBoolPropertyRange>(m, "OBBoolPropertyRange")
+      .def(py::init<>())
+      .def_readwrite("cur", &OBBoolPropertyRange::cur)
+      .def_readwrite("min", &OBBoolPropertyRange::min)
+      .def_readwrite("max", &OBBoolPropertyRange::max)
+      .def_readwrite("step", &OBBoolPropertyRange::step)
+      .def_readwrite("default_value", &OBBoolPropertyRange::def);
+
   py::class_<OBCameraIntrinsic>(m, "OBCameraIntrinsic")
       .def(py::init<>())
       .def_readwrite("fx", &OBCameraIntrinsic::fx)
@@ -366,6 +419,7 @@ void define_orbbec_types(const py::object &m) {
       .def_readwrite("k6", &OBCameraDistortion::k6)
       .def_readwrite("p1", &OBCameraDistortion::p1)
       .def_readwrite("p2", &OBCameraDistortion::p2)
+      .def_readwrite("model", &OBCameraDistortion::model)
       .def("__repr__", [](const OBCameraDistortion &a) {
         return "<OBCameraDistortion k1=" + std::to_string(a.k1) +
                " k2=" + std::to_string(a.k2) + " k3=" + std::to_string(a.k3) +
@@ -378,7 +432,9 @@ void define_orbbec_types(const py::object &m) {
       .value("NONE", OB_DISTORTION_NONE)
       .value("MODIFIED_BROWN_CONRADY", OB_DISTORTION_MODIFIED_BROWN_CONRADY)
       .value("INVERSE_BROWN_CONRADY", OB_DISTORTION_INVERSE_BROWN_CONRADY)
-      .value("BROWN_CONRADY", OB_DISTORTION_BROWN_CONRADY);
+      .value("BROWN_CONRADY", OB_DISTORTION_BROWN_CONRADY)
+      .value("BROWN_CONRADY_K6", OB_DISTORTION_BROWN_CONRADY_K6)
+      .value("KANNALA_BRANDT4", OB_DISTORTION_KANNALA_BRANDT4);
 
   py::class_<OBD2CTransform>(m, "OBExtrinsic")
       .def(py::init<>())
@@ -430,6 +486,7 @@ void define_orbbec_types(const py::object &m) {
       .def_readwrite("rgb_intrinsic", &OBCameraParam::rgbIntrinsic)
       .def_readwrite("rgb_distortion", &OBCameraParam::rgbDistortion)
       .def_readwrite("transform", &OBCameraParam::transform)
+      .def_readwrite("is_mirrored", &OBCameraParam::isMirrored)
       .def("__repr__", [](const OBCameraParam &a) {
         std::ostringstream oss;
         oss << "<OBCameraParam depth_intrinsic < fx=" << a.depthIntrinsic.fx
@@ -477,7 +534,8 @@ void define_orbbec_types(const py::object &m) {
   py::enum_<OBAlignMode>(m, "OBAlignMode")
       .value("DISABLE", OBAlignMode::ALIGN_DISABLE)
       .value("HW_MODE", OBAlignMode::ALIGN_D2C_HW_MODE)
-      .value("SW_MODE", OBAlignMode::ALIGN_D2C_SW_MODE);
+      .value("SW_MODE", OBAlignMode::ALIGN_D2C_SW_MODE)
+      .value("C2D_SW_MODE", OBAlignMode::ALIGN_C2D_SW_MODE);
 
   py::class_<OBRect>(m, "OBRect")
       .def(py::init<>())
@@ -498,9 +556,20 @@ void define_orbbec_types(const py::object &m) {
       .value("MJPG_TO_BGR888", OBConvertFormat::FORMAT_MJPG_TO_BGR888)
       .value("MJPG_TO_BGRA", OBConvertFormat::FORMAT_MJPG_TO_BGRA)
       .value("UYVY_TO_RGB888", OBConvertFormat::FORMAT_UYVY_TO_RGB888)
-      .value("BGR_TO_RGB", OBConvertFormat::FORMAT_BGR_TO_RGB);
+      .value("BGR_TO_RGB", OBConvertFormat::FORMAT_BGR_TO_RGB)
+      .value("MJPG_TO_NV12", OBConvertFormat::FORMAT_MJPG_TO_NV12)
+      .value("YUYV_TO_BGR", OBConvertFormat::FORMAT_YUYV_TO_BGR)
+      .value("YUYV_TO_RGBA", OBConvertFormat::FORMAT_YUYV_TO_RGBA)
+      .value("YUYV_TO_BGRA", OBConvertFormat::FORMAT_YUYV_TO_BGRA)
+      .value("YUYV_TO_Y16", OBConvertFormat::FORMAT_YUYV_TO_Y16)
+      .value("YUYV_TO_Y8", OBConvertFormat::FORMAT_YUYV_TO_Y8)
+      .value("RGBA_TO_RGB", OBConvertFormat::FORMAT_RGBA_TO_RGB)
+      .value("BGRA_TO_BGR", OBConvertFormat::FORMAT_BGRA_TO_BGR)
+      .value("Y16_TO_RGB", OBConvertFormat::FORMAT_Y16_TO_RGB)
+      .value("Y8_TO_RGB", OBConvertFormat::FORMAT_Y8_TO_RGB);
 
   py::enum_<OBGyroSampleRate>(m, "OBGyroSampleRate")
+      .value("SAMPLE_RATE_UNKNOWN", OBGyroSampleRate::OB_SAMPLE_RATE_UNKNOWN)
       .value("SAMPLE_RATE_1_5625_HZ",
              OBGyroSampleRate::OB_SAMPLE_RATE_1_5625_HZ)
       .value("SAMPLE_RATE_3_125_HZ", OBGyroSampleRate::OB_SAMPLE_RATE_3_125_HZ)
@@ -517,10 +586,13 @@ void define_orbbec_types(const py::object &m) {
       .value("SAMPLE_RATE_8_KHZ", OBGyroSampleRate::OB_SAMPLE_RATE_8_KHZ)
       .value("SAMPLE_RATE_16_KHZ", OBGyroSampleRate::OB_SAMPLE_RATE_16_KHZ)
       .value("SAMPLE_RATE_32_KHZ", OBGyroSampleRate::OB_SAMPLE_RATE_32_KHZ)
+      .value("SAMPLE_RATE_400_HZ", OBGyroSampleRate::OB_SAMPLE_RATE_400_HZ)
+      .value("SAMPLE_RATE_800_HZ", OBGyroSampleRate::OB_SAMPLE_RATE_800_HZ)
       .export_values();
   m.attr("OBAccelSampleRate") = m.attr("OBGyroSampleRate");
 
   py::enum_<OBGyroFullScaleRange>(m, "OBGyroFullScaleRange")
+      .value("FS_UNKNOWN", OB_GYRO_FS_UNKNOWN)
       .value("FS_16dps", OB_GYRO_FS_16dps)
       .value("FS_31dps", OB_GYRO_FS_31dps)
       .value("FS_62dps", OB_GYRO_FS_62dps)
@@ -528,13 +600,20 @@ void define_orbbec_types(const py::object &m) {
       .value("FS_250dps", OB_GYRO_FS_250dps)
       .value("FS_500dps", OB_GYRO_FS_500dps)
       .value("FS_1000dps", OB_GYRO_FS_1000dps)
-      .value("FS_2000dps", OB_GYRO_FS_2000dps);
+      .value("FS_2000dps", OB_GYRO_FS_2000dps)
+      .value("FS_400dps", OB_GYRO_FS_400dps)
+      .value("FS_800dps", OB_GYRO_FS_800dps);
 
   py::enum_<OBAccelFullScaleRange>(m, "OBAccelFullScaleRange")
+      .value("ACCEL_FS_UNKNOWN", OBAccelFullScaleRange::OB_ACCEL_FS_UNKNOWN)
       .value("ACCEL_FS_2g", OBAccelFullScaleRange::OB_ACCEL_FS_2g)
       .value("ACCEL_FS_4g", OBAccelFullScaleRange::OB_ACCEL_FS_4g)
       .value("ACCEL_FS_8g", OBAccelFullScaleRange::OB_ACCEL_FS_8g)
-      .value("ACCEL_FS_16g", OBAccelFullScaleRange::OB_ACCEL_FS_16g);
+      .value("ACCEL_FS_16g", OBAccelFullScaleRange::OB_ACCEL_FS_16g)
+      .value("ACCEL_FS_3g", OBAccelFullScaleRange::OB_ACCEL_FS_3g)
+      .value("ACCEL_FS_6g", OBAccelFullScaleRange::OB_ACCEL_FS_6g)
+      .value("ACCEL_FS_12g", OBAccelFullScaleRange::OB_ACCEL_FS_12g)
+      .value("ACCEL_FS_24g", OBAccelFullScaleRange::OB_ACCEL_FS_24g);
 
   py::class_<OBAccelValue>(m, "OBAccelValue")
       .def(py::init<>())
@@ -594,6 +673,7 @@ void define_orbbec_types(const py::object &m) {
       .value("OPEN", OBDepthCroppingMode::DEPTH_CROPPING_MODE_OPEN);
 
   py::enum_<OBDeviceType>(m, "OBDeviceType")
+      .value("UNKNOWN", OBDeviceType::OB_DEVICE_TYPE_UNKNOWN)
       .value("LIGHT_MONOCULAR",
              OBDeviceType::OB_STRUCTURED_LIGHT_MONOCULAR_CAMERA)
       .value("LIGHT_BINOCULAR",
@@ -610,7 +690,8 @@ void define_orbbec_types(const py::object &m) {
       .value("DEVICE_INFO", OBMediaType::OB_MEDIA_DEVICE_INFO)
       .value("STREAM_INFO", OBMediaType::OB_MEDIA_STREAM_INFO)
       .value("LEFT_IR", OBMediaType::OB_MEDIA_IR_LEFT_STREAM)
-      .value("RIGHT_IR", OBMediaType::OB_MEDIA_IR_RIGHT_STREAM);
+      .value("RIGHT_IR", OBMediaType::OB_MEDIA_IR_RIGHT_STREAM)
+      .value("ALL", OBMediaType::OB_MEDIA_ALL);
 
   py::enum_<OBMediaState>(m, "OBMediaState")
       .value("OB_MEDIA_BEGIN", OBMediaState::OB_MEDIA_BEGIN)
@@ -623,7 +704,10 @@ void define_orbbec_types(const py::object &m) {
       .value("ZERO_POINT_EIGHT_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM8)
       .value("ZERO_POINT_FOUR_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM4)
       .value("ZERO_POINT_TWO_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM2)
-      .value("ZERO_POINT_ONE_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM1);
+      .value("ZERO_POINT_ONE_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM1)
+      .value("ZERO_POINT_FIVE_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM5)
+      .value("ZERO_POINT_ZERO_FIVE_MM", OBDepthPrecisionLevel::OB_PRECISION_0MM05)
+      .value("UNKNOWN", OBDepthPrecisionLevel::OB_PRECISION_UNKNOWN);
 
   py::enum_<OBTofFilterRange>(m, "OBTofFilterRange")
       .value("CLOSE", OBTofFilterRange::OB_TOF_FILTER_RANGE_CLOSE)
@@ -714,8 +798,7 @@ void define_orbbec_types(const py::object &m) {
              OBSyncMode::OB_SYNC_MODE_PRIMARY_SOFT_TRIGGER)
       .value("SECONDARY_SOFT_TRIGGER",
              OBSyncMode::OB_SYNC_MODE_SECONDARY_SOFT_TRIGGER)
-      .value("IR_IMU_SYNC",
-             OBSyncMode::OB_SYNC_MODE_IR_IMU_SYNC)
+      .value("IR_IMU_SYNC", OBSyncMode::OB_SYNC_MODE_IR_IMU_SYNC)
       .value("UNKNOWN", OBSyncMode::OB_SYNC_MODE_UNKNOWN);
 
   py::enum_<OBPowerLineFreqMode>(m, "OBPowerLineFreqMode")
@@ -804,6 +887,28 @@ void define_orbbec_types(const py::object &m) {
                ", radius=" + std::to_string(params.radius) + ">";
       });
 
+  // SpatialFastFilterParams for SDK v2.9.3
+  py::class_<OBSpatialFastFilterParams>(m, "OBSpatialFastFilterParams")
+      .def(py::init<>())
+      .def_readwrite("radius", &OBSpatialFastFilterParams::radius)
+      .def("__repr__", [](const OBSpatialFastFilterParams &params) {
+        return "<OBSpatialFastFilterParams radius=" +
+               std::to_string(params.radius) + ">";
+      });
+
+  // SpatialModerateFilterParams for SDK v2.9.3
+  py::class_<OBSpatialModerateFilterParams>(m, "OBSpatialModerateFilterParams")
+      .def(py::init<>())
+      .def_readwrite("radius", &OBSpatialModerateFilterParams::radius)
+      .def_readwrite("magnitude", &OBSpatialModerateFilterParams::magnitude)
+      .def_readwrite("disp_diff", &OBSpatialModerateFilterParams::disp_diff)
+      .def("__repr__", [](const OBSpatialModerateFilterParams &params) {
+        return "<OBSpatialModerateFilterParams radius=" +
+               std::to_string(params.radius) +
+               ", magnitude=" + std::to_string(params.magnitude) +
+               ", disp_diff=" + std::to_string(params.disp_diff) + ">";
+      });
+
   py::enum_<OBEdgeNoiseRemovalType>(m, "OBEdgeNoiseRemovalType")
       .value("MG_FILTER", OBEdgeNoiseRemovalType::OB_MG_FILTER)
       .value("MGH_FILTER", OBEdgeNoiseRemovalType::OB_MGH_FILTER)
@@ -813,15 +918,71 @@ void define_orbbec_types(const py::object &m) {
   py::class_<OBEdgeNoiseRemovalFilterParams>(m,
                                              "OBEdgeNoiseRemovalFilterParams")
       .def(py::init<>())
-      .def_readwrite("type", &OBEdgeNoiseRemovalFilterParams::type)
-      .def_readwrite("margin_left_th",
-                     &OBEdgeNoiseRemovalFilterParams::marginLeftTh)
-      .def_readwrite("margin_right_th",
-                     &OBEdgeNoiseRemovalFilterParams::marginRightTh)
-      .def_readwrite("margin_top_th",
-                     &OBEdgeNoiseRemovalFilterParams::marginTopTh)
-      .def_readwrite("margin_bottom_th",
-                     &OBEdgeNoiseRemovalFilterParams::marginBottomTh);
+      .def_readwrite("margin_x_th", &OBEdgeNoiseRemovalFilterParams::margin_x_th)
+      .def_readwrite("margin_y_th", &OBEdgeNoiseRemovalFilterParams::margin_y_th)
+      .def_readwrite("limit_x_th", &OBEdgeNoiseRemovalFilterParams::limit_x_th)
+      .def_readwrite("limit_y_th", &OBEdgeNoiseRemovalFilterParams::limit_y_th)
+      .def_readwrite("width", &OBEdgeNoiseRemovalFilterParams::width)
+      .def_readwrite("height", &OBEdgeNoiseRemovalFilterParams::height)
+      .def_readwrite("enable_direction", &OBEdgeNoiseRemovalFilterParams::enable_direction)
+      .def("__repr__", [](const OBEdgeNoiseRemovalFilterParams &p) {
+        return "<OBEdgeNoiseRemovalFilterParams margin_x_th=" + std::to_string(p.margin_x_th) +
+               " margin_y_th=" + std::to_string(p.margin_y_th) +
+               " limit_x_th=" + std::to_string(p.limit_x_th) +
+               " limit_y_th=" + std::to_string(p.limit_y_th) +
+               " width=" + std::to_string(p.width) +
+               " height=" + std::to_string(p.height) +
+               " enable_direction=" + std::to_string(p.enable_direction) + ">";
+      });
+
+  // OBMgcNoiseRemovalFilterParams for SDK v2.8.1
+  py::class_<OBMgcNoiseRemovalFilterParams>(m, "OBMgcNoiseRemovalFilterParams")
+      .def(py::init<>())
+      .def_readwrite("max_width_left", &OBMgcNoiseRemovalFilterParams::max_width_left)
+      .def_readwrite("max_width_right", &OBMgcNoiseRemovalFilterParams::max_width_right)
+      .def_readwrite("max_radius", &OBMgcNoiseRemovalFilterParams::max_radius)
+      .def_readwrite("margin_x_th", &OBMgcNoiseRemovalFilterParams::margin_x_th)
+      .def_readwrite("margin_y_th", &OBMgcNoiseRemovalFilterParams::margin_y_th)
+      .def_readwrite("limit_x_th", &OBMgcNoiseRemovalFilterParams::limit_x_th)
+      .def_readwrite("limit_y_th", &OBMgcNoiseRemovalFilterParams::limit_y_th)
+      .def_readwrite("width", &OBMgcNoiseRemovalFilterParams::width)
+      .def_readwrite("height", &OBMgcNoiseRemovalFilterParams::height)
+      .def("__repr__", [](const OBMgcNoiseRemovalFilterParams &p) {
+        return "<OBMgcNoiseRemovalFilterParams max_width_left=" + std::to_string(p.max_width_left) +
+               " max_width_right=" + std::to_string(p.max_width_right) +
+               " max_radius=" + std::to_string(p.max_radius) +
+               " margin_x_th=" + std::to_string(p.margin_x_th) +
+               " margin_y_th=" + std::to_string(p.margin_y_th) +
+               " limit_x_th=" + std::to_string(p.limit_x_th) +
+               " limit_y_th=" + std::to_string(p.limit_y_th) +
+               " width=" + std::to_string(p.width) +
+               " height=" + std::to_string(p.height) + ">";
+      });
+
+  // OBLutNoiseRemovalFilterParams for SDK v2.8.1
+  py::class_<OBLutNoiseRemovalFilterParams>(m, "OBLutNoiseRemovalFilterParams")
+      .def(py::init<>())
+      .def_property(
+          "max_lut",
+          [](const OBLutNoiseRemovalFilterParams &self) -> py::array_t<uint16_t> {
+            py::array_t<uint16_t> arr(16);
+            std::memcpy(arr.mutable_data(), self.max_lut, 16 * sizeof(uint16_t));
+            return arr;
+          },
+          [](OBLutNoiseRemovalFilterParams &self, const py::array_t<uint16_t> &arr) {
+            if (arr.size() != 16) {
+              throw std::runtime_error("max_lut must be an array of 16 elements");
+            }
+            std::memcpy(self.max_lut, arr.data(), 16 * sizeof(uint16_t));
+          })
+      .def_readwrite("min_diff", &OBLutNoiseRemovalFilterParams::min_diff)
+      .def_readwrite("width", &OBLutNoiseRemovalFilterParams::width)
+      .def_readwrite("height", &OBLutNoiseRemovalFilterParams::height)
+      .def("__repr__", [](const OBLutNoiseRemovalFilterParams &p) {
+        return "<OBLutNoiseRemovalFilterParams min_diff=" + std::to_string(p.min_diff) +
+               " width=" + std::to_string(p.width) +
+               " height=" + std::to_string(p.height) + ">";
+      });
 
   py::enum_<OBDDONoiseRemovalType>(m, "OBDDONoiseRemovalType")
       .value("LUT", OBDDONoiseRemovalType::OB_NR_LUT)
@@ -893,6 +1054,73 @@ void define_orbbec_types(const py::object &m) {
             }
           });
 
+  // OBNetIpConfigV2 for SDK v2.8.1
+  py::class_<OBNetIpConfigV2>(m, "OBNetIpConfigV2")
+      .def(py::init<>())
+      .def_readwrite("flags", &OBNetIpConfigV2::flags)
+      .def_property(
+          "address",
+          [](const OBNetIpConfigV2 &config) -> std::string {
+            std::string addr = std::to_string(config.address[0]) + "." +
+                               std::to_string(config.address[1]) + "." +
+                               std::to_string(config.address[2]) + "." +
+                               std::to_string(config.address[3]);
+            return addr;
+          },
+          [](OBNetIpConfigV2 &config, const std::string &str) {
+            auto addr = split(str, ".");
+            if (addr.size() != 4) {
+              throw std::runtime_error("Invalid IP address");
+            }
+            for (int i = 0; i < 4; i++) {
+              config.address[i] = std::stoi(addr[i]);
+            }
+          })
+      .def_property(
+          "netmask",
+          [](const OBNetIpConfigV2 &config) -> std::string {
+            std::string addr = std::to_string(config.mask[0]) + "." +
+                               std::to_string(config.mask[1]) + "." +
+                               std::to_string(config.mask[2]) + "." +
+                               std::to_string(config.mask[3]);
+            return addr;
+          },
+          [](OBNetIpConfigV2 &config, const std::string &str) {
+            auto addr = split(str, ".");
+
+            if (addr.size() != 4) {
+              throw std::runtime_error("Invalid netmask");
+            }
+            for (int i = 0; i < 4; i++) {
+              config.mask[i] = std::stoi(addr[i]);
+            }
+          })
+      .def_property(
+          "gateway",
+          [](const OBNetIpConfigV2 &config) -> std::string {
+            std::string addr = std::to_string(config.gateway[0]) + "." +
+                               std::to_string(config.gateway[1]) + "." +
+                               std::to_string(config.gateway[2]) + "." +
+                               std::to_string(config.gateway[3]);
+            return addr;
+          },
+          [](OBNetIpConfigV2 &config, const std::string &str) {
+            auto addr = split(str, ".");
+            if (addr.size() != 4) {
+              throw std::runtime_error("Invalid gateway");
+            }
+            for (int i = 0; i < 4; i++) {
+              config.gateway[i] = std::stoi(addr[i]);
+            }
+          })
+      .def("__repr__", [](const OBNetIpConfigV2 &c) {
+        return "<OBNetIpConfigV2 flags=" + std::to_string(c.flags) +
+               " address=" + std::to_string(c.address[0]) + "." +
+               std::to_string(c.address[1]) + "." +
+               std::to_string(c.address[2]) + "." +
+               std::to_string(c.address[3]) + ">";
+      });
+
   py::enum_<OBCommunicationType>(m, "OBCommunicationType")
       .value("USB", OBCommunicationType::OB_COMM_USB)
       .value("ETHERNET", OBCommunicationType::OB_COMM_NET);
@@ -937,9 +1165,8 @@ void define_orbbec_types(const py::object &m) {
       .value(
           "ANY_SITUATION",
           OBFrameAggregateOutputMode::OB_FRAME_AGGREGATE_OUTPUT_ANY_SITUATION)
-      .value(
-          "DISABLE",
-          OBFrameAggregateOutputMode::OB_FRAME_AGGREGATE_OUTPUT_DISABLE);
+      .value("DISABLE",
+             OBFrameAggregateOutputMode::OB_FRAME_AGGREGATE_OUTPUT_DISABLE);
   py::enum_<OBCoordinateSystemType>(m, "OBCoordinateSystemType")
       .value("LEFT_HAND",
              OBCoordinateSystemType::OB_LEFT_HAND_COORDINATE_SYSTEM)
@@ -988,7 +1215,9 @@ void define_orbbec_types(const py::object &m) {
       .def(py::init<>())
       .def_readwrite("enable", &OBDeviceTimestampResetConfig::enable)
       .def_readwrite("timestamp_reset_delay_us",
-                     &OBDeviceTimestampResetConfig::timestamp_reset_delay_us);
+                     &OBDeviceTimestampResetConfig::timestamp_reset_delay_us)
+      .def_readwrite("timestamp_reset_signal_output_enable",
+                     &OBDeviceTimestampResetConfig::timestamp_reset_signal_output_enable);
 
   py::class_<OBBaselineCalibrationParam>(m, "OBBaselineCalibrationParam")
       .def(py::init<>())
@@ -1102,8 +1331,9 @@ void define_orbbec_types(const py::object &m) {
              OBFrameMetadataType::OB_FRAME_METADATA_TYPE_LASER_STATUS)
       .value("GPIO_INPUT_DATA",
              OBFrameMetadataType::OB_FRAME_METADATA_TYPE_GPIO_INPUT_DATA)
-      .value("DISPARITY_SEARCH_OFFSET",
-             OBFrameMetadataType::OB_FRAME_METADATA_TYPE_DISPARITY_SEARCH_OFFSET)
+      .value(
+          "DISPARITY_SEARCH_OFFSET",
+          OBFrameMetadataType::OB_FRAME_METADATA_TYPE_DISPARITY_SEARCH_OFFSET)
       .value("DISPARITY_SEARCH_RANGE",
              OBFrameMetadataType::OB_FRAME_METADATA_TYPE_DISPARITY_SEARCH_RANGE)
       .value("COUNT", OBFrameMetadataType::OB_FRAME_METADATA_TYPE_COUNT);
@@ -1187,5 +1417,133 @@ void define_orbbec_types(const py::object &m) {
              OBDeviceAccessMode::OB_DEVICE_MONITOR_ACCESS)
       .value("OB_DEVICE_DEFAULT_ACCESS",
              OBDeviceAccessMode::OB_DEVICE_DEFAULT_ACCESS);
+
+  // OBDeviceAccessState for SDK v2.9.3
+  // Device access state queried from GVCP CCP without opening the device.
+  py::enum_<OBDeviceAccessState>(m, "OBDeviceAccessState")
+      .value("OB_DEVICE_ACCESS_STATE_UNKNOWN",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_UNKNOWN,
+             "The access state cannot be determined")
+      .value("OB_DEVICE_ACCESS_STATE_UNSUPPORTED",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_UNSUPPORTED,
+             "The device or current build does not support access-state query")
+      .value("OB_DEVICE_ACCESS_STATE_AVAILABLE",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_AVAILABLE,
+             "The device is available for control access")
+      .value("OB_DEVICE_ACCESS_STATE_CONTROLLED",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_CONTROLLED,
+             "The device has a controller; monitor access may still be "
+             "available")
+      .value("OB_DEVICE_ACCESS_STATE_EXCLUSIVE",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_EXCLUSIVE,
+             "The device is held exclusively and cannot be accessed")
+      .value("OB_DEVICE_ACCESS_STATE_UNREACHABLE",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_UNREACHABLE,
+             "The device did not respond or the network path is unreachable")
+      .value("OB_DEVICE_ACCESS_STATE_FW_NOT_SUPPORTED",
+             OBDeviceAccessState::OB_DEVICE_ACCESS_STATE_FW_NOT_SUPPORTED,
+             "The device supports CCP, but the firmware version is too old");
+
+  // OBIpSourceType for SDK v2.8.1
+  py::enum_<OBIpSourceType>(m, "OBIpSourceType")
+      .value("NONE", OB_IP_SOURCE_NONE)
+      .value("LLA", OB_IP_SOURCE_LLA)
+      .value("DHCP", OB_IP_SOURCE_DHCP)
+      .value("PERSISTENT", OB_IP_SOURCE_PERSISTENT);
+
+  // OBClockType for SDK v2.9.0
+  py::enum_<OBClockType>(m, "OBClockType")
+      .value("REALTIME", OB_CLOCK_TYPE_REALTIME)
+      .value("MONOTONIC", OB_CLOCK_TYPE_MONOTONIC);
+
+  // New enums and structs for SDK v2.8.1
+  py::enum_<OBGvcpPortScheme>(m, "OBGvcpPortScheme")
+      .value("STANDARD", OB_GVCP_PORT_SCHEME_STANDARD)
+      .value("B", OB_GVCP_PORT_SCHEME_B);
+
+  py::enum_<OBPipelineIssue>(m, "OBPipelineIssue")
+      .value("NONE", OB_PIPELINE_ISSUE_NONE)
+      .value("SDK", OB_PIPELINE_ISSUE_SDK)
+      .value("DRIVER", OB_PIPELINE_ISSUE_DRIVER)
+      .value("FW", OB_PIPELINE_ISSUE_FW)
+      .value("HW", OB_PIPELINE_ISSUE_HW);
+
+  py::class_<OBPipelineStatus>(m, "OBPipelineStatus")
+      .def(py::init<>())
+      .def_readwrite("issue", &OBPipelineStatus::issue)
+      .def_readwrite("sdk_status", &OBPipelineStatus::sdkStatus)
+      .def_readwrite("dev_status", &OBPipelineStatus::devStatus)
+      .def_readwrite("drv_status", &OBPipelineStatus::drvStatus)
+      .def("__repr__", [](const OBPipelineStatus &s) {
+        return "<OBPipelineStatus issue=" + std::to_string(s.issue) +
+               " sdk_status=" + std::to_string(s.sdkStatus) +
+               " dev_status=" + std::to_string(s.devStatus) +
+               " drv_status=" + std::to_string(s.drvStatus) + ">";
+      });
+
+  // CameraPerformanceMode for SDK v2.9.0
+  py::enum_<OBCameraPerformanceMode>(m, "OBCameraPerformanceMode")
+      .value("ADAPTIVE", ADAPTIVE_PERFORMANCE_MODE)
+      .value("HIGH", HIGH_PERFORMANCE_MODE);
+
+  // ColorPreset for SDK v2.9.0
+  py::enum_<OBColorPreset>(m, "OBColorPreset")
+      .value("DEFAULT", OB_DEFAULT)
+      .value("WARM_BIASED_AWB", OB_WARM_BIASED_AWB);
+
+  // UvcBackendType for SDK v2.9.0
+  py::enum_<OBUvcBackendType>(m, "OBUvcBackendType")
+      .value("AUTO", OB_UVC_BACKEND_TYPE_AUTO)
+      .value("LIBUVC", OB_UVC_BACKEND_TYPE_LIBUVC)
+      .value("V4L2", OB_UVC_BACKEND_TYPE_V4L2)
+      .value("MSMF", OB_UVC_BACKEND_TYPE_MSMF);
+
+  // IntraCameraSyncReference for SDK v2.9.0
+  py::enum_<OBIntraCameraSyncReference>(m, "OBIntraCameraSyncReference")
+      .value("START_OF_EXPOSURE", OB_START_OF_EXPOSURE)
+      .value("MIDDLE_OF_EXPOSURE", OB_MIDDLE_OF_EXPOSURE)
+      .value("END_OF_EXPOSURE", OB_END_OF_EXPOSURE);
+}
+void define_type_helper(py::module &m) {
+  m.def("convert_format_to_string", &ob::TypeHelper::convertOBFormatTypeToString);
+  m.def("convert_frame_type_to_string", &ob::TypeHelper::convertOBFrameTypeToString);
+  m.def("convert_stream_type_to_string", &ob::TypeHelper::convertOBStreamTypeToString);
+  m.def("convert_sensor_type_to_string", &ob::TypeHelper::convertOBSensorTypeToString);
+  m.def("convert_imu_sample_rate_to_string",
+        &ob::TypeHelper::convertOBIMUSampleRateTypeToString);
+  m.def("convert_imu_sample_rate_to_value",
+        &ob::TypeHelper::convertOBIMUSampleRateTypeToValue);
+  m.def("convert_imu_sample_rate_value_to_type",
+        &ob::TypeHelper::convertOBIMUSampleRateValueToType);
+  m.def("convert_gyro_full_scale_range_to_string",
+        &ob::TypeHelper::convertOBGyroFullScaleRangeTypeToString);
+  m.def("convert_accel_full_scale_range_to_string",
+        &ob::TypeHelper::convertOBAccelFullScaleRangeTypeToString);
+  m.def("convert_lidar_scan_rate_to_string",
+        &ob::TypeHelper::convertOBLiDARScanRateTypeToString);
+  m.def("convert_frame_metadata_type_to_string",
+        &ob::TypeHelper::convertOBFrameMetadataTypeToString);
+  m.def("convert_sensor_type_to_stream_type",
+        &ob::TypeHelper::convertSensorTypeToStreamType);
+  m.def("convert_stream_type_to_sensor_type",
+        &ob::TypeHelper::convertStreamTypeToSensorType);
+  m.def("convert_stream_type_to_frame_type",
+        &ob::TypeHelper::convertStreamTypeToFrameType);
+  // ob_frame_type_to_stream_type is not exported from the SDK dylib (missing
+  // OB_EXPORT in TypeHelper.h), so implement it via frame->sensor->stream.
+  m.def("convert_frame_type_to_stream_type", [](OBFrameType type) {
+    try {
+      OBSensorType sensor = ob_frame_type_to_sensor_type(type);
+      return ob_sensor_type_to_stream_type(sensor);
+    } catch (const ob::Error &error) {
+      throw pyorbbecsdk::OBError(error);
+    } catch (const std::exception &e) {
+      throw py::value_error(e.what());
+    }
+  });
+  m.def("convert_frame_type_to_sensor_type",
+        &ob::TypeHelper::convertFrameTypeToSensorType);
+  m.def("is_video_sensor_type", &ob::TypeHelper::isVideoSensorType);
+  m.def("is_video_stream_type", &ob::TypeHelper::isVideoStreamType);
 }
 }  // namespace pyorbbecsdk

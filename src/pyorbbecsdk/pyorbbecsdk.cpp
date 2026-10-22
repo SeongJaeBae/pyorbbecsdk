@@ -19,6 +19,7 @@
 #include <libobsensor/ObSensor.hpp>
 #include <string>
 
+#include "application_config.hpp"
 #include "context.hpp"
 #include "device.hpp"
 #include "error.hpp"
@@ -41,12 +42,45 @@
 #endif
 
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 // #include <Python.h>
 
 namespace py = pybind11;
 namespace pyorbbecsdk2 = pyorbbecsdk;
+
+#if defined(__linux__)
+std::string get_library_path_from_maps(const std::string &library_name) {
+  std::ifstream maps_file("/proc/self/maps");
+  if (!maps_file.is_open()) {
+    return "";
+  }
+
+  std::string line;
+  while (std::getline(maps_file, line)) {
+    std::istringstream iss(line);
+    std::string addr_range, perms, offset, dev, inode, pathname;
+    if (!(iss >> addr_range >> perms >> offset >> dev >> inode)) {
+      continue;
+    }
+
+    std::getline(iss, pathname);
+
+    size_t start = pathname.find_first_not_of(" \t");
+    if (start != std::string::npos) {
+      pathname = pathname.substr(start);
+    }
+
+    if (!pathname.empty() && pathname.find(library_name) != std::string::npos) {
+      return pathname;
+    }
+  }
+
+  return "";
+}
+#endif
 
 std::string get_site_packages_path() {
   Py_Initialize();  // Initialize the Python interpreter
@@ -108,6 +142,15 @@ std::string get_extensions_path() {
   if (dladdr(reinterpret_cast<void *>(&ob_create_context), &dl_info)) {
     if (dl_info.dli_fname) {
       library_path = std::string(dl_info.dli_fname);
+
+      if (library_path.find('/') == std::string::npos) {
+#if defined(__linux__)
+        std::string full_path = get_library_path_from_maps(library_path);
+        if (!full_path.empty()) {
+          library_path = full_path;
+        }
+#endif
+      }
     } else {
       std::cerr << "Failed to get library filename using dladdr" << std::endl;
     }
@@ -163,27 +206,66 @@ PYBIND11_MODULE(pyorbbecsdk, m) {
     return std::to_string(major) + "." + std::to_string(minor) + "." +
            std::to_string(patch);
   });
+  m.def("get_version_major", &ob::Version::getMajor);
+  m.def("get_version_minor", &ob::Version::getMinor);
+  m.def("get_version_patch", &ob::Version::getPatch);
+  m.def("get_version_stage", []() {
+    return std::string(ob::Version::getStageVersion());
+  });
   // test set extensions
   auto extensions_path = get_extensions_path();
   if (!extensions_path.empty()) {
     std::cout << "load extensions from " << extensions_path << std::endl;
     ob::Context::setExtensionsDirectory(extensions_path.c_str());
   }
-  // context
+  // types
   pyorbbecsdk::define_orbbec_types(m);
-  pyorbbecsdk::define_context(m);
+
+  // type helper
+  pyorbbecsdk::define_type_helper(m);
+
+  // stream_profile
+  pyorbbecsdk::define_stream_profile(m);
+  pyorbbecsdk::define_video_stream_profile(m);
+  pyorbbecsdk::define_accel_stream_profile(m);
+  pyorbbecsdk::define_gyro_stream_profile(m);
+  pyorbbecsdk::define_lidar_stream_profile(m);
+  pyorbbecsdk::define_stream_profile_list(m);
+
+  // sensor
+  pyorbbecsdk::define_sensor(m);
+  pyorbbecsdk::define_sensor_list(m);
 
   // device
   pyorbbecsdk::define_device_info(m);
-  pyorbbecsdk::define_device_list(m);
   pyorbbecsdk::define_device_preset_list(m);
+  pyorbbecsdk::define_color_preset_list(m);
   pyorbbecsdk::define_depth_work_mode_list(m);
   pyorbbecsdk::define_preset_resolution_config_list(m);
-  pyorbbecsdk::define_device(m);
   pyorbbecsdk::define_camera_list(m);
+  pyorbbecsdk::define_device(m);
+  pyorbbecsdk::define_device_list(m);
+  pyorbbecsdk::define_device_frame_interleave_list(m);
 
-  // error
-  pyorbbecsdk::define_orbbec_error(m);
+  // application config
+  pyorbbecsdk::define_application_sensor_config(m);
+  pyorbbecsdk::define_application_point_cloud_config(m);
+  pyorbbecsdk::define_application_hdr_merge_config(m);
+  pyorbbecsdk::define_application_dev_decimation_config(m);
+  pyorbbecsdk::define_application_config(m);
+
+  // frame
+  pyorbbecsdk::define_frame(m);
+  pyorbbecsdk::define_video_frame(m);
+  pyorbbecsdk::define_color_frame(m);
+  pyorbbecsdk::define_depth_frame(m);
+  pyorbbecsdk::define_ir_frame(m);
+  pyorbbecsdk::define_confidence_frame(m);
+  pyorbbecsdk::define_points_frame(m);
+  pyorbbecsdk::define_accel_frame(m);
+  pyorbbecsdk::define_gyro_frame(m);
+  pyorbbecsdk::define_lidar_points_frame(m);
+  pyorbbecsdk::define_frame_set(m);
 
   // filter
   pyorbbecsdk::define_filter(m);
@@ -199,38 +281,30 @@ PYBIND11_MODULE(pyorbbecsdk, m) {
   pyorbbecsdk::define_sequence_id_filter(m);
   pyorbbecsdk::define_noise_removal_filter(m);
   pyorbbecsdk::define_decimation_filter(m);
+  pyorbbecsdk::define_edge_noise_removal_filter(m);
+  pyorbbecsdk::define_mgc_noise_removal_filter(m);
+  pyorbbecsdk::define_lut_noise_removal_filter(m);
+  pyorbbecsdk::define_undistortion_filter(m);
+  pyorbbecsdk::define_enhanced_depth_filter(m);
+  pyorbbecsdk::define_filter_list(m);
+  pyorbbecsdk::define_filter_factory(m);
+  pyorbbecsdk::define_spatial_fast_filter(m);
+  pyorbbecsdk::define_spatial_moderate_filter(m);
+  pyorbbecsdk::define_false_positive_filter(m);
 
-  // frame
-  pyorbbecsdk::define_frame(m);
-  pyorbbecsdk::define_video_frame(m);
-  pyorbbecsdk::define_color_frame(m);
-  pyorbbecsdk::define_depth_frame(m);
-  pyorbbecsdk::define_ir_frame(m);
-  pyorbbecsdk::define_confidence_frame(m);
-  pyorbbecsdk::define_points_frame(m);
-  pyorbbecsdk::define_frame_set(m);
-  pyorbbecsdk::define_accel_frame(m);
-  pyorbbecsdk::define_gyro_frame(m);
-  pyorbbecsdk::define_lidar_points_frame(m);
+  // context
+  pyorbbecsdk::define_context(m);
+
+  // error
+  pyorbbecsdk::define_orbbec_error(m);
 
   // pipeline
-  pyorbbecsdk::define_pipeline(m);
   pyorbbecsdk::define_pipeline_config(m);
+  pyorbbecsdk::define_pipeline(m);
 
   // properties
   pyorbbecsdk::define_properties(m);
 
-  // sensor
-  pyorbbecsdk::define_sensor(m);
-  pyorbbecsdk::define_sensor_list(m);
-  pyorbbecsdk::define_filter_list(m);
-  // stream_profile
-  pyorbbecsdk::define_stream_profile(m);
-  pyorbbecsdk::define_video_stream_profile(m);
-  pyorbbecsdk::define_accel_stream_profile(m);
-  pyorbbecsdk::define_gyro_stream_profile(m);
-  pyorbbecsdk::define_lidar_stream_profile(m);
-  pyorbbecsdk::define_stream_profile_list(m);
   pyorbbecsdk::define_coordinate_transform_helper(m);
   pyorbbecsdk::define_point_cloud_helper(m);
   pyorbbecsdk::define_record(m);
@@ -248,27 +322,66 @@ PYBIND11_MODULE(pyorbbecsdk2, m) {
     return std::to_string(major) + "." + std::to_string(minor) + "." +
            std::to_string(patch);
   });
+  m.def("get_version_major", &ob::Version::getMajor);
+  m.def("get_version_minor", &ob::Version::getMinor);
+  m.def("get_version_patch", &ob::Version::getPatch);
+  m.def("get_version_stage", []() {
+    return std::string(ob::Version::getStageVersion());
+  });
   // test set extensions
   auto extensions_path = get_extensions_path();
   if (!extensions_path.empty()) {
     std::cout << "load extensions from " << extensions_path << std::endl;
     ob::Context::setExtensionsDirectory(extensions_path.c_str());
   }
-  // context
+  // types
   pyorbbecsdk::define_orbbec_types(m);
-  pyorbbecsdk::define_context(m);
+
+  // type helper
+  pyorbbecsdk::define_type_helper(m);
+
+  // stream_profile
+  pyorbbecsdk::define_stream_profile(m);
+  pyorbbecsdk::define_video_stream_profile(m);
+  pyorbbecsdk::define_accel_stream_profile(m);
+  pyorbbecsdk::define_gyro_stream_profile(m);
+  pyorbbecsdk::define_lidar_stream_profile(m);
+  pyorbbecsdk::define_stream_profile_list(m);
+
+  // sensor
+  pyorbbecsdk::define_sensor(m);
+  pyorbbecsdk::define_sensor_list(m);
 
   // device
   pyorbbecsdk::define_device_info(m);
-  pyorbbecsdk::define_device_list(m);
   pyorbbecsdk::define_device_preset_list(m);
+  pyorbbecsdk::define_color_preset_list(m);
   pyorbbecsdk::define_depth_work_mode_list(m);
   pyorbbecsdk::define_preset_resolution_config_list(m);
-  pyorbbecsdk::define_device(m);
   pyorbbecsdk::define_camera_list(m);
+  pyorbbecsdk::define_device(m);
+  pyorbbecsdk::define_device_list(m);
+  pyorbbecsdk::define_device_frame_interleave_list(m);
 
-  // error
-  pyorbbecsdk::define_orbbec_error(m);
+  // application config
+  pyorbbecsdk::define_application_sensor_config(m);
+  pyorbbecsdk::define_application_point_cloud_config(m);
+  pyorbbecsdk::define_application_hdr_merge_config(m);
+  pyorbbecsdk::define_application_dev_decimation_config(m);
+  pyorbbecsdk::define_application_config(m);
+
+  // frame
+  pyorbbecsdk::define_frame(m);
+  pyorbbecsdk::define_video_frame(m);
+  pyorbbecsdk::define_color_frame(m);
+  pyorbbecsdk::define_depth_frame(m);
+  pyorbbecsdk::define_ir_frame(m);
+  pyorbbecsdk::define_confidence_frame(m);
+  pyorbbecsdk::define_points_frame(m);
+  pyorbbecsdk::define_accel_frame(m);
+  pyorbbecsdk::define_gyro_frame(m);
+  pyorbbecsdk::define_lidar_points_frame(m);
+  pyorbbecsdk::define_frame_set(m);
 
   // filter
   pyorbbecsdk::define_filter(m);
@@ -284,38 +397,30 @@ PYBIND11_MODULE(pyorbbecsdk2, m) {
   pyorbbecsdk::define_sequence_id_filter(m);
   pyorbbecsdk::define_noise_removal_filter(m);
   pyorbbecsdk::define_decimation_filter(m);
+  pyorbbecsdk::define_edge_noise_removal_filter(m);
+  pyorbbecsdk::define_mgc_noise_removal_filter(m);
+  pyorbbecsdk::define_lut_noise_removal_filter(m);
+  pyorbbecsdk::define_undistortion_filter(m);
+  pyorbbecsdk::define_enhanced_depth_filter(m);
+  pyorbbecsdk::define_filter_list(m);
+  pyorbbecsdk::define_filter_factory(m);
+  pyorbbecsdk::define_spatial_fast_filter(m);
+  pyorbbecsdk::define_spatial_moderate_filter(m);
+  pyorbbecsdk::define_false_positive_filter(m);
 
-  // frame
-  pyorbbecsdk::define_frame(m);
-  pyorbbecsdk::define_video_frame(m);
-  pyorbbecsdk::define_color_frame(m);
-  pyorbbecsdk::define_depth_frame(m);
-  pyorbbecsdk::define_ir_frame(m);
-  pyorbbecsdk::define_confidence_frame(m);
-  pyorbbecsdk::define_points_frame(m);
-  pyorbbecsdk::define_frame_set(m);
-  pyorbbecsdk::define_accel_frame(m);
-  pyorbbecsdk::define_gyro_frame(m);
-  pyorbbecsdk::define_lidar_points_frame(m);
+  // context
+  pyorbbecsdk::define_context(m);
+
+  // error
+  pyorbbecsdk::define_orbbec_error(m);
 
   // pipeline
-  pyorbbecsdk::define_pipeline(m);
   pyorbbecsdk::define_pipeline_config(m);
+  pyorbbecsdk::define_pipeline(m);
 
   // properties
   pyorbbecsdk::define_properties(m);
 
-  // sensor
-  pyorbbecsdk::define_sensor(m);
-  pyorbbecsdk::define_sensor_list(m);
-  pyorbbecsdk::define_filter_list(m);
-  // stream_profile
-  pyorbbecsdk::define_stream_profile(m);
-  pyorbbecsdk::define_video_stream_profile(m);
-  pyorbbecsdk::define_accel_stream_profile(m);
-  pyorbbecsdk::define_gyro_stream_profile(m);
-  pyorbbecsdk::define_lidar_stream_profile(m);
-  pyorbbecsdk::define_stream_profile_list(m);
   pyorbbecsdk::define_coordinate_transform_helper(m);
   pyorbbecsdk::define_point_cloud_helper(m);
   pyorbbecsdk::define_record(m);

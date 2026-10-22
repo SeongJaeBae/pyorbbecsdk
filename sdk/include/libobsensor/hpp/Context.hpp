@@ -86,6 +86,33 @@ public:
     }
 
     /**
+     * @brief Set the host-side timestamp clock type for the current context.
+     *
+     * @attention All ob::Context instances share the same underlying SDK runtime and clock type.
+     * @attention Switching affects frame system and global timestamps; avoid switching during streaming.
+     * @attention It is recommended to synchronize device timestamps after switching.
+     *
+     * @param[in] type The clock type to use for host-side timestamps.
+     */
+    void setTimestampClockType(OBClockType type) const {
+        ob_error *error = nullptr;
+        ob_context_set_timestamp_clock_type(impl_, type, &error);
+        Error::handle(&error);
+    }
+
+    /**
+     * @brief Get the current host-side timestamp clock type for the context.
+     *
+     * @return OBClockType The current clock type.
+     */
+    OBClockType getTimestampClockType() const {
+        ob_error *error = nullptr;
+        auto      type  = ob_context_get_timestamp_clock_type(impl_, &error);
+        Error::handle(&error);
+        return type;
+    }
+
+    /**
      * @brief Queries the enumerated device list.
      *
      * @return std::shared_ptr<DeviceList> A pointer to the device list class.
@@ -121,13 +148,40 @@ public:
      * @param[in] config The new IP configuration.
      * @return bool true if the configuration command was processed successfully, false otherwise.
      *
-     * @note This applies to all GigE Vision devices
+     * @note This applies to all GVCP devices
      */
     bool forceIp(const char *macAddress, const OBNetIpConfig &config) {
         ob_error *error = nullptr;
         auto      res   = ob_force_ip_config(macAddress, config, &error);
         Error::handle(&error);
         return res;
+    }
+
+    /**
+     * @brief Set the GVCP port scheme used for network device discovery and control.
+     *
+     * @param[in] scheme Target GVCP port scheme.
+     *                   Thrown exception if the specified scheme is invalid or unsupported.
+     *
+     * @note This change affects only the current session and is not persisted.
+     * @note Switching to a different scheme will force disconnection of all currently connected network devices.
+     */
+    void setGvcpPortScheme(OBGvcpPortScheme scheme) {
+        ob_error *error = nullptr;
+        ob_set_gvcp_port_scheme(impl_, scheme, &error);
+        Error::handle(&error);
+    }
+
+    /**
+     * @brief Get the current GVCP port scheme.
+     *
+     * @return Current GVCP port scheme.
+     */
+    OBGvcpPortScheme getGvcpPortScheme() const {
+        ob_error *error  = nullptr;
+        auto      scheme = ob_get_gvcp_port_scheme(impl_, &error);
+        Error::handle(&error);
+        return scheme;
     }
 
     /**
@@ -202,6 +256,17 @@ public:
     void enableDeviceClockSync(uint64_t repeatIntervalMsec) const {
         ob_error *error = nullptr;
         ob_enable_device_clock_sync(impl_, repeatIntervalMsec, &error);
+        Error::handle(&error);
+    }
+
+    /**
+     * @brief Activates synchronization time to all created devices (if supported).
+     *
+     * @param[in] hardwarePPSTime unit:ms.
+     */
+    void syncDeviceHardwarePPSTime(uint64_t hardwarePPSTime) const {
+        ob_error *error = nullptr;
+        ob_sync_device_hardware_pps_time(impl_, hardwarePPSTime, &error);
         Error::handle(&error);
     }
 
